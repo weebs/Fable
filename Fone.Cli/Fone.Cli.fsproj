@@ -1,0 +1,40 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="Imports.fs" />
+        <Compile Include="SourceBuilder.fs" />
+        <Compile Include="AST.fs" />
+        <Compile Include="C99Compiler.fs" />
+        <Compile Include="Compiler.fs" />
+        <Compile Include="Helpers.fs" />
+        <Compile Include="Print.fs" />
+        <Compile Include="ReplaceExpr.fs" />
+        <Compile Include="Transforms.C.fs" />
+        <Compile Include="DataType\State.fs" />
+        <Compile Include="DataType\DataType.fs" />
+        <Compile Include="DataType\Headers.fs" />
+        <Compile Include="DataType\Function.fs" />
+        <Compile Include="DataType\Generic.fs" />
+        <Compile Include="Program.fs" />
+        <Compile Include="File.fs" />
+        <Compile Include="Database.fs" />
+        <Compile Include="Cli.fs" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\src\Fable.Cli\Fable.Cli.fsproj" />
+    </ItemGroup>
+    <ItemGroup>
+<!--        <ProjectReference Include="..\Fable.Compiler\Fable.Compiler.fsproj" />-->
+<!--        <ProjectReference Include="..\Fable.Transforms\Fable.Transforms.fsproj" />-->
+        <Reference Include="../lib/fcs/FSharp.Compiler.Service.dll" />
+        <Reference Include="../lib/fcs/FSharp.DependencyManager.Nuget.dll" />
+        <Reference Include="../lib/fcs/FSharp.Core.dll" />
+    </ItemGroup>
+
+</Project>
