@@ -873,6 +873,7 @@ let getFableLibraryPath (opts: CrackerOptions) =
         | Python, None -> "fable-library-py/fable_library", "fable_library"
         | Python, Some Py.Naming.sitePackages ->
             "fable-library-py", "fable-library"
+        | Plugin, None -> "", ""
         | _, Some path ->
             if path.StartsWith("./", StringComparison.Ordinal) then
                 "", Path.normalizeFullPath path
@@ -1099,8 +1100,8 @@ let getFullProjectOpts (opts: CrackerOptions) =
 
                         if not (IO.File.Exists(paketReferences)) then
                             true
+                        // Only check paket.lock for main project and assume it's the same for references
                         else if isOlderThanCache paketReferences then
-                            // Only check paket.lock for main project and assume it's the same for references
                             if fsproj <> cacheInfo.ProjectPath then
                                 true
                             else

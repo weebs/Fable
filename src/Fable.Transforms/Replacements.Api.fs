@@ -96,6 +96,7 @@ let createMutablePublicValue (com: ICompiler) value =
     | TypeScript -> JS.Replacements.createAtom com value
     | Rust
     | Php
+    | Plugin
     | Dart -> value
 
 let getRefCell (com: ICompiler) r typ (expr: Expr) =

@@ -16,6 +16,7 @@ type Language =
     | Php
     | Dart
     | Rust
+    | Plugin
 
     override this.ToString() =
         match this with

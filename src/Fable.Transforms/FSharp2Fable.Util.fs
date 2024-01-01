@@ -1031,6 +1031,7 @@ module Helpers =
         | TypeScript -> memb.IsMutable && isNotPrivate memb
         | Rust -> true // always
         | Php
+        | Plugin
         | Dart -> false
 
     let isModuleValueForCalls

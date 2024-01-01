@@ -655,3 +655,6 @@ let compileFile
     | Php -> Php.compileFile com cliArgs pathResolver isSilent outPath
     | Dart -> Dart.compileFile com cliArgs pathResolver isSilent outPath
     | Rust -> Rust.compileFile com cliArgs pathResolver isSilent outPath
+    | Plugin ->
+        printfn "%A" com
+        async { return () }
