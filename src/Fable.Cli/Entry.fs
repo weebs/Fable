@@ -563,8 +563,7 @@ let getLibPkgVersion =
     | Dart
     | Php -> None
 
-[<EntryPoint>]
-let main argv =
+let main (argv: string[]) =
     result {
         let! argv, runProc =
             argv
@@ -695,3 +694,9 @@ let main argv =
         | Error msg ->
             Log.error msg
             1
+[<EntryPoint>]
+let fone argv =
+    Api.Compiler.compileSingleFile "C:/Users/Dave/projects/Fable/src/quicktest/QuickTest.fs"
+    // |> Async.RunSynchronously
+    0
+    // main argv

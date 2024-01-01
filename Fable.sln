@@ -64,6 +64,8 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fable.Build", "src\Fable.Bu
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fable.Compiler", "src\Fable.Compiler\Fable.Compiler.fsproj", "{942DD29B-07C0-4ACF-891E-85C1235A9BE0}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fone.Cli", "Fone.Cli\Fone.Cli.fsproj", "{F6CD4FB0-19C6-4F90-BE5E-2BD54277A8C0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -166,6 +168,10 @@ Global
 		{942DD29B-07C0-4ACF-891E-85C1235A9BE0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{942DD29B-07C0-4ACF-891E-85C1235A9BE0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{942DD29B-07C0-4ACF-891E-85C1235A9BE0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F6CD4FB0-19C6-4F90-BE5E-2BD54277A8C0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F6CD4FB0-19C6-4F90-BE5E-2BD54277A8C0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F6CD4FB0-19C6-4F90-BE5E-2BD54277A8C0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F6CD4FB0-19C6-4F90-BE5E-2BD54277A8C0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

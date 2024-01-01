@@ -11,7 +11,7 @@
       //"commandLineArgs": "tests/TypeScript --outDir temp/tests/TypeScript --lang TypeScript --exclude Fable.Core --noCache",
 
       // quicktest-ts
-      "commandLineArgs": "src/quicktest --lang TypeScript --exclude Fable.Core --noCache"
+      "commandLineArgs": "../../quicktest --lang TypeScript --exclude Fable.Core --noCache"
 
     }
   }
