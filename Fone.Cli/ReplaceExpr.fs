@@ -18,7 +18,7 @@ module Const =
     let emitType = "Fable.Core.C.EmitTypeAttribute"
     let byrefType = "Microsoft.FSharp.Core.byref`1"
     let byrefType2 = "Microsoft.FSharp.Core.byref`2"
- 
+
 let replaceInputRecordIdent (expr: Expr) (original: string) (replacement: Expr) =
     expr |> walkExprInPlace (fun e ->
         match e with
@@ -39,7 +39,7 @@ let replaceInputRecord (e: Expr) =
             | _ -> e
         | _ -> e
 //    )
-    
+
 let byrefFullName = "Microsoft.FSharp.Core.byref`2"
 let resolveByRefExpr (expr: Expr) : Expr =
     match expr with
@@ -89,7 +89,7 @@ let rec replaceEmptyDelegatesAndLambdas (e: Expr) =
         | Some (callee, typ, info, r) -> callee
         | _ -> e
     | _ -> e
-let rec replaceTmdsCalls (e: Expr) =    
+let rec replaceTmdsCalls (e: Expr) =
     let inline step title =
         printfn $"{title}: Enter to step..."
         // Console.ReadLine() |> ignore
@@ -181,6 +181,7 @@ let replaceByrefContents (e: Expr) =
                 e
         | Get(expr, FieldGet fieldInfo, _type, sourceLocationOption)
                 when fieldInfo.Name = "contents" ->
+            // todo: This could cause a bug for types that have a field named "contents"
             expr
         | Call(callee, callInfo, ``type``, sourceLocationOption) ->
             match callInfo.MemberRef with

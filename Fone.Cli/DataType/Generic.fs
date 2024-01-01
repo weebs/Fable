@@ -145,7 +145,36 @@ let generateGenericImplementations context path projHeaderName : string * Generi
             | ValueOption arg ->
                 valueOptions.Add arg
             | Instantiation (fullName, genericParms) when fullName = "System.Array`1" ->
-                ()
+                let t = (transformType [] genericParms[0])
+                // let name = $"System_Array__{t.ToNameString()}"
+                // let t = $"System_Array__{(transformType [] genericParms[0]).ToTypeString()}"
+                // added_types.Add name
+                // added_functions.Add
+                // let (id, type_sig, function_info) = Function.buildConstructor context generics genericParams classDecl.Constructor.Value ent.FullName ent.IsValueType
+                // generic_implementations.Add((type_sig, Compiler.writeFunction (SourceBuilder()) function_info))
+                let typeName = $"System_Array__{t.ToNameString()}"
+                let decl = $"
+typedef struct System_Array__{t.ToNameString()} {{
+    unsigned char __refcount;
+    int length;
+    {t.ToTypeString()}* data;
+}} System_Array__{t.ToNameString()};
+
+{typeName}* {typeName}_ctor(int size, {t.ToTypeString()}* data);"
+                let ctor = $"""
+{typeName}* {typeName}_ctor(int size, {t.ToTypeString()}* data) {{
+    {typeName}* this$ = malloc(sizeof({typeName}));
+    this$->__refcount = 1;
+    this$->length = size;
+    this$->data = malloc(sizeof({t.ToTypeString()})* size);
+    for (int i = 0; i < size; i++) {{
+        this$->data[i] = data[i];
+        {if requiresTracking [] genericParms[0] then "this$->data[i].__refcount++;" else ""}
+    }}
+    return ({typeName}*)Runtime_autorelease(this$);
+}}
+"""
+                generic_implementations.Add(decl, ctor)
             | Instantiation(fullName, genericParams) when compiler.genericClassDeclarations.Value.ContainsKey fullName || fullName.StartsWith("System.Array") ->
                 let classDecl = compiler.genericClassDeclarations.Value.[if fullName = "System.Array" then "System.Array`1" else fullName]
 //                let ent = database.contents.GetEntity(classDecl.Entity)
@@ -183,7 +212,7 @@ let generateGenericImplementations context path projHeaderName : string * Generi
                     let fields = ent.FSharpFields
                     let _memberFunctionsAndValues = ent.MembersFunctionsAndValues
                     let _mems = classDecl.AttachedMembers
-                    let generic_types = 
+                    let generic_types =
                         (List.map (transformType generics) genericParams)
                     let name = Print.compiledTypeName(generic_types, classDecl.Entity)
     //                    if ent.GenericParameters.Length > 0 then
@@ -202,13 +231,13 @@ let generateGenericImplementations context path projHeaderName : string * Generi
     //                        ()
     //                    ()
     //                context.Value <- addToModule name (C.Struct { tag = name; members = compiledFields }) context.Value
-                    let names = 
-                        generic_types 
-                        |> List.map (fun t -> t.ToNameString()) 
+                    let names =
+                        generic_types
+                        |> List.map (fun t -> t.ToNameString())
                         |> fun c_names -> String.Join(", ", c_names)
                     let className = classDecl.Entity.FullName.Replace(".", "_").Split('`').[0]
                     sb.AppendLine($"// Declare_{className}({names});") |> ignore
-                    
+
                     if name.Contains "Array" then
                         printfn $"%A{compiledFields}"
                     if name.Contains "Program_voidptr__struct" then
@@ -248,7 +277,7 @@ let generateGenericImplementations context path projHeaderName : string * Generi
                 generic_macro_defs_to_call.Add((fullName, generic_param_text_types))
             | Instantiation(fullName, types) ->
                 log $"============================ instantiation ======================================"
-                #if !FABLE_COMPILER 
+                #if !FABLE_COMPILER
                 log $"{fullName}:\n {Print.printObj 1 types}"
                 #endif
                 () // System.Array
@@ -261,27 +290,27 @@ let generateGenericImplementations context path projHeaderName : string * Generi
 //                        database.contents.TryGetEntity(declaringEntity)
 //                        |> Option.defaultValue (compiler.TryGetEntity(declaringEntity.FullName))
                     match ent with
-                    | None -> 
+                    | None ->
                         log $"======================= missing entity =============================="
-                        #if !FABLE_COMPILER 
+                        #if !FABLE_COMPILER
                         log $"{Print.printObj 0 declaringEntity}"
                         log $"{fableMethodName} - {Print.printObj 0 genericParams}"
                         #endif
                         let paramNames =
                             match snd usage with
-                            | Call (_, info, _, _) -> 
-                                info.SignatureArgTypes 
-                                |> List.map (fun g -> 
-                                    match g with 
-                                    | GenericParam (name, _, _) -> Some name | _ -> None) 
-                                |> List.filter (Option.isSome) 
+                            | Call (_, info, _, _) ->
+                                info.SignatureArgTypes
+                                |> List.map (fun g ->
+                                    match g with
+                                    | GenericParam (name, _, _) -> Some name | _ -> None)
+                                |> List.filter (Option.isSome)
                                 |> List.map (Option.defaultValue "")
-                            | _ -> 
+                            | _ ->
                                 log $"======================= todo handle non call generic member decl entity =============================="
                                 []
                         let generics = genericParams |> List.zip paramNames
-                        // let genericsName = 
-                        //     genericParams 
+                        // let genericsName =
+                        //     genericParams
                         //     |> List.map (fun g -> (transformType generics g).ToNameString())
                         //     |> fun names -> String.Join("_", names)
                         // let fullName = declaringEntity.FullName + "__" + genericsName + "_" + fableMethodName
@@ -293,7 +322,7 @@ let generateGenericImplementations context path projHeaderName : string * Generi
                         let methodDeclKey = (declaringEntity.FullName, fableMethodName)
                         if genericMethodDeclarations.contents.ContainsKey(methodDeclKey) then
                             let decl = genericMethodDeclarations.contents.[(declaringEntity.FullName, fableMethodName)]
-                            let (function_id, type_sig, function_info) = Function.Generics.addMethodImplementation context generics declaringEntity.FullName true genericParams fableMethodName decl 
+                            let (function_id, type_sig, function_info) = Function.Generics.addMethodImplementation context generics declaringEntity.FullName true genericParams fableMethodName decl
                             generic_implementations.Add(type_sig, Compiler.writeFunction (SourceBuilder()) function_info)
                             added_functions.Add(function_id)
                         else

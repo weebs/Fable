@@ -43,7 +43,7 @@ let rec emitEvaluateStringTemplate ctx (com: Type.ICompiler) (generics: (string 
         match value with
         | Fable.Value(valueKind, sourceLocationOption) ->
             match valueKind with
-            | Fable.StringConstant value -> 
+            | Fable.StringConstant value ->
                 // todo: ad sanitize string function
                 // "\"" + value.Replace("\n", "\\n").Replace("\t", "\\t").Replace("\r", "\\r") + "\""
                 // value.Replace("\n", "\\n").Replace("\t", "\\t").Replace("\r", "\\r")
@@ -58,7 +58,7 @@ let rec emitEvaluateStringTemplate ctx (com: Type.ICompiler) (generics: (string 
                     let isEmitAttribute (attr: Fable.Attribute) =
                         attr.Entity.FullName.Contains("EmitType")
                     match com.TryGetEntity(entityRef) with
-                    | Some ent -> 
+                    | Some ent ->
                         match ent.Attributes |> Seq.tryFind isEmitAttribute with
                         | Some attr -> string attr.ConstructorArgs.[0]
                         | _ -> Print.compiledTypeName (genericArgs |> List.map (transformType generics), entityRef.FullName)
@@ -93,7 +93,7 @@ let rec emitEvaluateStringTemplate ctx (com: Type.ICompiler) (generics: (string 
                 Print.printComment value
         | _ ->
             Print.printComment value
-            
+
     let mutable s = ""
     for i in 0..(parts.Length - 1) do
         if i > 0 then
@@ -226,9 +226,9 @@ let rec transformType (generics: (string * Type) list) (t: Fable.Type) =
     //                    let t = C.UserDefined (typeName, ent.IsValueType, Some ent)
     //                    if ent.IsValueType then t
     //                    else C.Ptr t
-                        if typeName = "void*" || typeName = "pthread_t" then 
+                        if typeName = "void*" || typeName = "pthread_t" then
                             C.EmitType typeName
-                        else 
+                        else
                             C.EmitType ("struct " + typeName)
                     | None ->
                         let t = C.UserDefined (Print.compiledTypeName (args, entityRef), ent.IsValueType, Some ent)
@@ -289,7 +289,7 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
             C.ValueKind.ObjectCompound ("ValueOption_" + (transformType generics ``type``).ToNameString(), [ C.Value (C.ValueKind.Int 1); transformExpr ctx generics expr ])
         | None ->
             C.ValueKind.ObjectCompound ("ValueOption_" + (transformType generics ``type``).ToNameString(), [ C.Value (C.ValueKind.Int 0) ])
-            
+
         // match exprOption with
         // | Some value ->
         //     C.ValueKind.AnonymousCompound
@@ -299,7 +299,7 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
         let corrected = value.Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\t", "\\t").Replace("\r", "\\r")
         C.ValueKind.CStr corrected
     | Fable.CharConstant c ->
-        C.ValueKind.Char c 
+        C.ValueKind.Char c
     | Fable.UnitConstant -> // todo: this leaves blank ; around the file that makes me think soemthing is wrong D:
 //        C.ValueKind.Void
         C.ValueKind.Emit $"/* %A{valueKind} */"
@@ -316,12 +316,12 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
                 $"({{ {type_name}* p = malloc(sizeof({type_name})); " +
                 $"*p = {expr}; " +
                 // todo: Runtime_track_var
-                //$"Runtime_track_var((void**)&p); " + 
+                //$"Runtime_track_var((void**)&p); " +
                 $"{deref}p; }})"
             let values =
                 exprs
                 |> List.zip caseInfo.UnionCaseFields
-                |> List.map (fun (caseField, fieldExpr) -> 
+                |> List.map (fun (caseField, fieldExpr) ->
                     // if requiresTracking generics fieldExpr.Type then
                     //     let type_name = (transformType generics fieldExpr.Type).ToTypeString()
                     //     let value = Compiler.writeExpression (transformExpr ctx generics fieldExpr)
@@ -396,10 +396,10 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
         let array_type_name = (transformType generics typ).ToNameString()
         match newKind with
         | Fable.ArrayValues values ->
-            let unwrapCast value = 
+            let unwrapCast value =
                 match value with | Fable.TypeCast(expr, Any) -> expr | _ -> value
             // todo: I may need to remove this in the future when actually creating array literals
-            let array_values = 
+            let array_values =
                 values |> List.map (unwrapCast >> transformExpr ctx generics) |> fun c_values -> String.Join(", ", c_values |> List.map (fun c_value -> Compiler.writeExpression c_value))
 //            C.ValueKind.Emit <| $"{{{array_values}}}"
             let tName = (transformType generics typ).ToNameString()
@@ -408,15 +408,17 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
             let arrType = $"struct System_Array__{tName}"
             // let data = $"({(transformType generics typ).ToTypeString()}[]){{ {array_values} }}"
             let data = $"{{ {array_values} }}"
-            
+
             let t = $"{(transformType generics typ).ToNameString()}"
             let argsTxt = values |> List.map (transformExpr ctx generics) |> List.map Compiler.writeExpression |> String.concat ", "
             C.ValueKind.Emit $"System_Array__{t}_ctor({values.Length}, ( ( {t}[{values.Length}] ) {{{argsTxt}}} ) )"
             // C.ValueKind.Emit $"({{ int length = {length}; {t2} data[] = {data}; void* copy = malloc({length}); memcpy(copy, data, length); {arrType}* array = malloc(sizeof({arrType})); array->length = {values.Length}; array->data = copy; array; }})"
             // C.ValueKind.Emit $"(void*)0 /* {{ %A{array_values} }} */"
         | Fable.ArrayAlloc size ->
+            // todo: Won't this break with sizes that contain expressions like IfThenElse
             let size_string = transformExpr ctx generics size |> Compiler.writeExpression
-            C.ValueKind.Emit $"&(struct System_Array__{array_type_name}){{ .data = malloc(sizeof({array_type_name}) * {size_string}), .length = {size_string} }}"
+            // C.ValueKind.Emit $"&(struct System_Array__{array_type_name}){{ .data = malloc(sizeof({array_type_name}) * {size_string}), .length = {size_string} }}"
+            C.ValueKind.Emit $"System_Array__{array_type_name}_alloc({size_string})"
         | Fable.ArrayFrom expr ->
             C.ValueKind.Emit $"/* Fable.ArrayFrom expr {Print.printExpr 0 expr} */"
 //        C.ValueKind.Ptr 1337uL
@@ -496,7 +498,7 @@ let convertCallArgs generics (callee: Fable.Expr) (callInfo: Fable.CallInfo) =
         //                    callInfo.Args
             | _ ->
                 callInfo.Args //|> filterCallExprArgs
-        | None -> 
+        | None ->
             callInfo.Args //|> filterCallExprArgs
     let transformArg (arg: Expr) (paramGroup: Parameter) =
         match (arg, paramGroup.Type) with
@@ -644,7 +646,7 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
         | "ReadPointerInlined", "Microsoft.FSharp.NativeInterop.NativePtrModule.c" ->
             C.Expr.Unary (C.Deref, (transformExpr ctx generics callInfo.Args.[0]))
         | "ToNativeIntInlined", "Microsoft.FSharp.NativeInterop.NativePtrModule.c" ->
-            C.Expr.TypeCast (C.Ptr C.Void, (transformExpr ctx generics callInfo.Args.[0])) 
+            C.Expr.TypeCast (C.Ptr C.Void, (transformExpr ctx generics callInfo.Args.[0]))
         | "defaultOf", "Util.c" ->
             match ``type`` with
             | Any -> C.Expr.Emit "(void*)0"
@@ -695,7 +697,7 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
 //                let compiledName = getCompiledMethodName generics callInfo database.contents memberRef importInfo.Selector
 //                C.Call (compiledName, callInfo.Args |> List.map (transformExpr))
             | _ ->
-                
+
                 C.Expr.Emit <| Print.printComment ("Unmatched import", libraryFile, importInfo, expr)
                 //Print.emitComment(importInfo)
     | Get(IdentExpr ident, FieldGet field, ``type``, sourceLocationOption) when ident.Name = "console" && field.Name = "log" ->
@@ -793,7 +795,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                 C.Binary (C.BinaryOp.Eq, item, C.Value (C.ValueKind.Int (if isSome then 1 else 0)))
             | TypeTest ``type`` -> comment
             | UnionCaseTest tag ->
-                let access = 
+                let access =
                     match expr1.Type with
                     | DeclaredType (entRef, genArgs) ->
                         let ent = compiler.GetEntity(entRef.FullName)
@@ -836,7 +838,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                     | Array(genericArg, arrayKind) -> C.DerefMemberAccess
                     | _ -> C.MemberAccess
                 match expr.Type with
-                | String -> 
+                | String ->
                     C.Expr.Emit <|
                         "strlen(" + (Compiler.writeExpression (transformExpr ctx generics expr)) + ")"
                 // | Array (typ, kind: ArrayKind) ->
@@ -870,7 +872,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                 let ent = database.contents.GetEntity(fieldInfo.Entity)
                 let caseName = ent.UnionCases.[fieldInfo.CaseIndex].Name
                 let fieldName = ent.UnionCases.[fieldInfo.CaseIndex].UnionCaseFields.[fieldInfo.FieldIndex].Name
-                let access = 
+                let access =
                     match expr.Type with
                     | DeclaredType (entRef, genArgs) ->
                         let ent = compiler.GetEntity(entRef.FullName)
@@ -915,9 +917,9 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                         | Value(NewArray(ArrayValues values, ``type``, arrayKind), sourceLocationOption) ->
                             let values = values |> List.map (fun value -> match value with | TypeCast(expr, Any) -> expr | _ -> value)
                             C.Expr.Emit (values |> List.map (fun value -> (transformExpr ctx generics value) |> Compiler.writeExpression) |> fun call_args -> String.Join(", ", call_args))
-                        | _ -> 
+                        | _ ->
                             C.Expr.Emit ident.Name
-                    | _ -> 
+                    | _ ->
                         C.Expr.Emit ""
                 | _ ->
                     C.Expr.Emit ""
@@ -932,9 +934,9 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                             let isMethod = if emitInfo.Macro = "____em_asm_method_var_args" then true else false
                             let values = if isMethod then List.skip 1 values else values
                             C.Expr.Emit (values |> List.mapi (fun i _ -> $"${if isMethod then i + 1 else i}") |> fun em_asm_args -> String.Join(", ", em_asm_args))
-                        | _ -> 
+                        | _ ->
                             C.Expr.Emit ""
-                    | _ -> 
+                    | _ ->
                         C.Expr.Emit ""
                 | _ ->
                     C.Expr.Emit ""
@@ -1060,7 +1062,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
             // todo: boundValues ?
     //        C.Value (C.ValueKind.Int targetIndex)
     //        C.Expr.ExprAssignment (C.Expr.Emit "decisionTree", C.Value (C.ValueKind.Int targetIndex))
-        
+
         | TypeCast(expr, ``type``) ->
     //        match expr.Type, ``type`` with
     //        | Number(NumberKind.Int32, numberInfo), Number(NumberKind.UInt8) -> C.Expr.Emit $"(() & 0xFF)"
@@ -1091,11 +1093,26 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                 C.Expr.Emit $"{getAnonymousFunctionName ctx.currentFile expr}"
     //            C.Expr.Emit $"(void*)0 /* {Print.printComment expr} */"
         | CurriedApply(applied, exprs, ``type``, sourceLocationOption) ->
+            let lambdaDepth (t: Fable.Type) =
+                let rec loop n t =
+                    match t with
+                    | Fable.LambdaType (argType, returnType) ->
+                        match returnType with
+                        | Fable.LambdaType _ -> loop (n + 1) returnType
+                        | _ -> n + 1
+                    | _ ->
+                        n
+                loop 0 t
             match applied with
             | IdentExpr ident ->
                 C.Call (ident.Name, exprs |> List.map (transformExpr ctx generics))
+            | Fable.Call(callee, info, Fable.LambdaType (argType, returnType), range) ->
+                if lambdaDepth applied.Type = exprs.Length then
+                    Print.emitComment expr
+                else
+                    Print.emitComment expr
             | _ ->
-                Print.emitComment applied
+                Print.emitComment expr
         | Delegate(idents, body, stringOption, tags) ->
             transformDelegate ctx generics expr idents body
         | IfThenElse(guardExpr, thenExpr, elseExpr, _sourceLocationOption) ->
@@ -1214,7 +1231,7 @@ let transformNewRecord ctx generics expr =
                         let ident = C.Ident ({
                             Name = name; Type = v.Type; IsMutable = false; IsThisArgument = false; IsCompilerGenerated = false; Range = None;
                         }, (isValueType v.Type))
-                        yield (ident, [ C.Declaration { _type = _type; name = name; value = value } ])
+                        yield (ident, [ C.Declaration { _type = _type; name = name; value = value; requiresTracking = failwith "todo" } ])
                     else
                         yield (transformExpr ctx generics v, [])
                 ]
@@ -1308,7 +1325,8 @@ let transformLet ctx generics (ident: Ident) value (body: Expr) =
         | _ -> variable_type
     let assignment = C.Declaration { C.DeclarationInfo._type = variable_type
                                      C.DeclarationInfo.name = ident.Name
-                                     C.DeclarationInfo.value = c_value }
+                                     C.DeclarationInfo.value = c_value
+                                     C.DeclarationInfo.requiresTracking = requiresTracking generics value.Type }
     compiler.AddIdent (ident, value)
     let following =
         let bodyType = body.Type
@@ -1321,30 +1339,34 @@ let transformLet ctx generics (ident: Ident) value (body: Expr) =
                     match variable_type with
                     | C.Ptr t | t -> t.ToNameString()
                 let finalizer_id = $"{name}_Finalizer"
-                [ C.Expression <| C.Call ("Runtime_end_var_scope", [ C.TypeCast (C.EmitType "void**", C.Expr.Emit $"&{ident.Name}"); C.Expr.Emit ("(void*)" + finalizer_id) ]) ]
+                // [ C.Expression <| C.Call ("Runtime_end_var_scope", [ C.TypeCast (C.EmitType "void**", C.Expr.Emit $"&{ident.Name}"); C.Expr.Emit ("(void*)" + finalizer_id) ]) ]
+                []
+                // [ C.Emit $"{ident.Name}->__refcount--;" ]
             else
                 []
         if body.Length > 0 then
             if bodyType = Type.Unit then
                 body @ postFollowing
             else
-                (List.take (body.Length - 1) body) @ postFollowing @ [ List.last body ]
+                body @ postFollowing
+                // todo: This doesn't work with returnsCounter
+                // (List.take (body.Length - 1) body) @ postFollowing @ [ List.last body ]
         else
             postFollowing @ [ List.last body ]
     compiler.RemoveIdent ident |> ignore
     let postAssignment =
-        if requiresTracking generics value.Type then
+        if requiresTracking generics value.Type && Query.isSimpleExpr value then
             // todo: Runtime_track_var
             // [ C.Expression <| C.Call ("Runtime_track_var", [ C.TypeCast (C.EmitType "void**", C.Expr.Emit $"&{ident.Name}")]) ]
-            [ C.Expression <| C.Call ("Runtime_inc_count", [ C.TypeCast (C.EmitType "void*", C.Expr.Ident (ident, false)) ]) ]
-            // []
+            // [ C.Expression <| C.Call ("Runtime_inc_count", [ C.TypeCast (C.EmitType "void*", C.Expr.Ident (ident, false)) ]) ]
+            [ C.Emit $"{ident.Name}->__refcount++;" ]
         else
             []
     let assignment =
         let sb = SourceBuilder()
-        (assignment :: postAssignment) |> Compiler.writeStatements sb
-        C.Emit <| sb.ToString().Replace(";\n", "; ")
-    assignment :: following // @ postFollowing
+        (assignment :: postAssignment) // |> Compiler.writeStatements sb
+        // C.Emit <| sb.ToString().Replace(";\n", "; ")
+    assignment @ following // @ postFollowing
     // Print.emitComment value
 
 let isValueType (t: Type) =
@@ -1361,7 +1383,7 @@ let wrapStatementsWithThreadContextUpdate (statements: C.Statement list) =
     ]
 let debugIdent (ident: Ident) =
     $"{ident.Name}"
-    
+
 let debugExpr (depth: int) (expr: Expr) =
     if displayExpressions then
         let result =
@@ -1439,7 +1461,7 @@ let initial_attempt_transformDecisionTreeConditionExpr generics (expr: Expr) (ta
 ////            loop 0 (fst targets.[targetIndex])
 //            Some <| (loop 0 (fst targets.[targetIndex]) (snd targets.[targetIndex]))
 ////            Some <| Sequential [ (loop 0 (fst targets.[targetIndex]) (snd targets.[targetIndex])); (snd targets.[targetIndex]) ]
-////            let createLetBindings 
+////            let createLetBindings
 ////            Some ((snd targets.[targetIndex]))
 //            //Some (Fable.Set (IdentExpr ident, SetKind.ValueSet, typ, Value <| (ValueKind.NumberConstant (targetIndex, NumberKind.Int32, NumberInfo.Empty), e.Range), e.Range))
 //        | _ -> None
@@ -1454,14 +1476,14 @@ let initial_attempt_transformDecisionTreeConditionExpr generics (expr: Expr) (ta
 //    let declarations = (grabLastExpr callback expr)
 //    let e = Fable.Transforms.AST.visitFromInsideOut id expr
 //    let compiledValues = transformMember ctx generics declarations
-    
+
     // todo: this used to be named declarations
 //    let expr = (Fable.Transforms.AST.visitFromOutsideIn callback expr)
 //    [ yield! transformMember ctx generics declarations; (transformMember )]
 //    (transformMember ctx generics (Fable.Transforms.AST.visitFromOutsideIn callback expr))
-    
+
 //    [ yield! compiledValues; yield! transformMember ctx generics expr ]
-    
+
     // let following = transformMember ctx generics body
     // assignment :: following
 //    [
@@ -1482,7 +1504,7 @@ let transformDecisionTreeConditionExpr ctx generics (expr: Expr) (targets: (Iden
 //                | [ binding ] -> expr //Let (binding, createGetUnionField n, Value (ValueKind.UnitConstant, binding.Range)) // expr)
 //                | binding :: remainingBindings -> loop (n + 1) remainingBindings expr //Let (binding, createGetUnionField n, loop (n + 1) remainingBindings expr)
 //            loop 0 (fst targets.[targetIndex])
-            
+
             let rec loop n (bindings: (Ident * Expr) list) expr =
                 match bindings with
                 | [] -> expr
@@ -1497,7 +1519,7 @@ let transformDecisionTreeConditionExpr ctx generics (expr: Expr) (targets: (Iden
             let bindings = List.zip idents boundValues
             Some (loop 0 bindings matchSuccessExpr)
 //            Some (loop 0 (fst targets.[targetIndex]))
-            
+
             //Some <| (loop 0 (fst targets.[targetIndex]) (snd targets.[targetIndex]))
 //            Some (snd targets.[targetIndex])
         | _ -> None
@@ -1524,9 +1546,9 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
     //    | Operation(operationKind, ``type``, sourceLocationOption) ->
     //        [ C.Statement.Expression <| transformOperation operationKind ``type`` ]
         | Sequential exprs -> exprs  |> List.collect (loop generics)
-        | Let(ident, value, letBody) -> 
+        | Let(ident, value, letBody) ->
             // if ctx.currentFile.Contains "audio.fs" then printfn $"{Print.printExpr 0 body}"
-            transformLet ctx generics ident value letBody 
+            transformLet ctx generics ident value letBody
         | IdentExpr ident -> [ C.Statement.Expression <| C.Ident (ident, isValueType ident.Type) ]
         | DecisionTree(expr1, targets) ->
             transformDecisionTreeConditionExpr ctx generics expr1 targets
@@ -1538,7 +1560,12 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
             let each =
                 C.Assignment (C.Ident (ident, isValueType ident.Type), C.Binary (C.Add, C.Ident (ident, isValueType ident.Type), C.Value (C.ValueKind.Int (if isUp then 1 else -1))))
             let declaration: C.DeclarationInfo =
-                { _type = transformType generics ident.Type; name = ident.Name; value = C.ExprAssignment (transformExpr ctx generics start) }
+                {
+                    _type = transformType generics ident.Type
+                    name = ident.Name
+                    value = C.ExprAssignment (transformExpr ctx generics start)
+                    requiresTracking = false
+                }
             wrapStatementsWithThreadContextUpdate [ C.ForLoop (declaration, condition, each, loop generics expr) ]
         | Set(expr, kind, _type, value, _sourceLocationOption) ->
             // log $"========================= set ============================="
@@ -1546,7 +1573,7 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
             // log $"%A{expr.Type}"
             let expr =
                 match expr.Type with
-                // | DeclaredType(entityRef, genericArgs) 
+                // | DeclaredType(entityRef, genericArgs)
                 //         when entityRef.FullName = Const.byrefType || entityRef.FullName = Const.byrefType2 ->
                 //     Operation (OperationKind.Unary (UnaryOperator.UnaryDeref, expr), [], genericArgs.[0], expr.Range)
                 | _ -> expr
@@ -1582,8 +1609,8 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
                         let _member = (accessType ((transformExpr ctx generics expr), fieldName))
                         // todo: reassign
                         // [ C.Emit $"Runtime_reassign_field((void**)&{Compiler.writeExpression _member}, {Compiler.writeExpression e});" ]
-                        [ 
-                            C.Emit $"Runtime_reassign_field((void**)&{Compiler.writeExpression _member}, {Compiler.writeExpression e});" 
+                        [
+                            C.Emit $"Runtime_reassign_field((void**)&{Compiler.writeExpression _member}, {Compiler.writeExpression e});"
                             // C.Assignment ((accessType ((transformExpr ctx generics expr), fieldName)), transformExpr ctx generics value)
                         ]
                     else
@@ -1617,7 +1644,7 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
                         ])) ]
                     | _ ->
                         [ C.Emit $"/* %A{body} */" ]
-                | ValueSet -> 
+                | ValueSet ->
                     let e = transformExpr ctx generics expr
                     let _value = transformExpr ctx generics value
                     [
@@ -1651,9 +1678,12 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
                     let range = body.Range |> Option.map (fun r -> $"{r.start.line}_{r.start.column}") |> Option.defaultValue "something_random_todo_fixme"
                     [
                         C.Declaration {
-                            name = $"result_{range}"; _type = C.Bool
+                            name = $"result_{range}"
+                            _type = C.Bool
                             value = C.StatementAssignment << C.Block <|
                                     loop generics guardExpr
+                            // todo: requiresTracking for IfThenElse
+                            requiresTracking = false
                         }
                         C.Conditional (C.Expr.Emit $"result_{range}", loop generics thenExpr, loop generics elseExpr)
                     ]
@@ -1716,7 +1746,7 @@ let transformMemberDeclArgs generics (args: Ident list) : Ident list * C.Stateme
                         //     name = "this$"
                         //     value = C.ExprAssignment (C.Unary (C.Ref, C.Expr.Emit "this_value"))
                         // } ]
-                    | _ -> arg, [] 
+                    | _ -> arg, []
                 | _ -> arg, []
             | _ -> arg, []
         )

@@ -2,11 +2,11 @@ module Fable.C.AST
 
 [<RequireQualifiedAccess>]
 module rec C =
-    // todo: Storage classes:  https://www.tutorialspoint.com/cprogramming/c_storage_classes.htm 
+    // todo: Storage classes:  https://www.tutorialspoint.com/cprogramming/c_storage_classes.htm
 
     // https://www.tutorialspoint.com/cprogramming/c_operators.htm
-    type DeclarationInfo = { _type: Type; name: string; value: DeclarationAssignment }
-    
+    type DeclarationInfo = { _type: Type; name: string; value: DeclarationAssignment; requiresTracking: bool }
+
     type DeclarationAssignment =
         | ExprAssignment of Expr
         | StatementAssignment of Statement
@@ -49,7 +49,7 @@ module rec C =
             | Bool -> "bool"
             | Char -> "char"
             | UnsignedChar -> "unsigned char"
-            | UserDefined (fullName, _, _) -> 
+            | UserDefined (fullName, _, _) ->
                 if fullName.StartsWith "struct " then fullName else "struct " + fullName
             | Ptr t -> $"{t.ToTypeString()}*"
             | EmitType string -> string
@@ -76,7 +76,7 @@ module rec C =
             | Generic name -> "generic_arg_" + name
             | UserDefined (fullName, _, _) -> fullName
             | Ptr t -> $"{t.ToNameString()}ptr"
-            | EmitType string -> 
+            | EmitType string ->
                 // let name = string.Replace("struct ", "")
                 // name
                 string.Replace(" ", "_")
@@ -97,8 +97,8 @@ module rec C =
                 | _ ->
                     "%p"
             | _ -> "%p"
-        
-    // type Statement = { Expr: Fable.AST.Fable.Expr; Statement: StatementKind }     
+
+    // type Statement = { Expr: Fable.AST.Fable.Expr; Statement: StatementKind }
     // and StatementKind =
     // [<RequireQualifiedAccess>]
     // type E<'t> =
@@ -124,7 +124,7 @@ module rec C =
     //     | Expression of Expr
     //     | Block of T<'t> list
     //     | Return of Expr
-    // type C = string * T<string> 
+    // type C = string * T<string>
     and Statement =
         | Emit of string
         | Assignment of Expr * Expr
@@ -152,7 +152,7 @@ module rec C =
         member this.RequiresDestructor =
             match this with
             // todo: the right way to do this is to look at the call to make the assignment. if it's a function that returns
-            // an obj that requires GC, then yes 
+            // an obj that requires GC, then yes
             | Declaration decl when decl.name <> "this$" ->
                 match decl._type with
                 | Type.Ptr (UserDefined (fullName, isValueType, e))
@@ -172,14 +172,14 @@ module rec C =
                     None
             | _ ->
                 None
-                
-        
+
+
     type UnaryOp =
         | Deref
         | Ref
         | Not
         | BinaryOneCompliement
-        
+
     type UnaryExpr = UnaryOp * Expr
 
     type BinaryOp =
@@ -202,7 +202,7 @@ module rec C =
         | LessOrEqual
 
     type BinaryExpr = BinaryOp * Expr * Expr
-    
+
     type ValueKind =
         | Void
         | Byte of byte
@@ -244,20 +244,20 @@ module rec C =
 
 //    type TypeDecl =
 //        | Struct of fields: (string * Type) list
-        
+
     type ModuleDeclaration =
         | Extern of name: string * args: (string * Type) list * return_type: Type
         | Function of FunctionInfo
         | Struct of Struct
         | StaticVar of DeclarationInfo
         | Union of cases: Struct list
-        
+
     type ModuleInfo =
         { structs: Map<string, Struct>
           unions: Map<string, Ident list>
           variables: Map<string, Fable.AST.Fable.Declaration>
           functions: Map<string, FunctionInfo> }
-        
+
     type FunctionInfo =
         { id: string; return_type: Type; args: (string * Type) list; body: Statement list }
 
@@ -266,6 +266,6 @@ module rec C =
 
     type Struct =
         { tag: string; members: (Type * string) list } // todo: array literals like char title[50]; see: https://www.tutorialspoint.com/cprogramming/c_structures.htm
-        
+
 type Web =
     | Foo

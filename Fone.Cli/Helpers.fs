@@ -27,16 +27,16 @@ let inline (+=)< ^ref, ^key, ^value
 //let inline (+=) a b =
 //    let value = (^a : (member Value: ^b) a)
 //    a := value + b
-    
+
 //let inline (@+) map tpl =
-    
+
 //    (^map : (member Add : ^tpl -> ^map) (map, tpl))
 //    (^ref : (member set_Value : ^map -> unit) (hasValueAndAdd, result))
 
 //Map.empty.Add
 //(Map.empty) @+ ("", "")
 //(ref 10) += 10
-    
+
 
 //let inline (+=) hasValueAndAdd argsForAddMethod =
 //    let value = (^a : (member Value : ^b) hasValueAndAdd)
@@ -148,7 +148,7 @@ let rec gatherIdentsBefore (before: Expr) (expr: Expr) : Ident list =
                     false, acc
             | TryCatch (body, catch, finalizer, _) ->
                 false, acc // todo
-                
+
             // todo
             | LetRec _
             | DecisionTree _
@@ -158,7 +158,7 @@ let rec gatherIdentsBefore (before: Expr) (expr: Expr) : Ident list =
             | _ ->
                 false, acc
     snd (loop [] expr)
-        
+
 let filterFunctionMethodArgs (args: Ident list) =
     if args.Length = 1 && args.[0].Type = Unit then
         []
@@ -208,11 +208,11 @@ module Query =
             match (importInfo.Selector, (Array.last (importInfo.Path.Split(char "/")))) with
             | "defaultOf", "Util.js" -> true
             | "defaultOf", "Util.c" -> true
-            | selector, file when (List.contains "new" callInfo.Tags) -> 
+            | selector, file when (List.contains "new" callInfo.Tags) ->
                 true
             | _ -> false
         | _ -> false
-        
+
     let hasJsDependency (com: Type.ICompiler) (expr: Expr) =
         let typResult =
             match expr.Type with
@@ -240,7 +240,7 @@ module Query =
                 []
         | _ ->
             []
-            
+
     let grabDependencies (com: Type.ICompiler) (expr: Expr) =
         let mutable results = []
         let callback (e: Expr) =
@@ -285,7 +285,7 @@ module Query =
                 argsDependencies @ returnTypeDependsOn
             | _ -> []
         fields |> List.map loop |> List.collect id |> List.distinct
-                
+
     // todo: Taken from Fable2Rust.fs
 //    let isClosedOverIdent (ident: Ident) =
 //        not (ident.IsCompilerGenerated && ident.Name = "matchValue")
@@ -378,7 +378,7 @@ module Query =
         match t with
         | DeclaredType(entityRef, genericArgs) when not (entityRef.FullName.StartsWith("Microsoft.FSharp.Core")) && entityRef.FullName = "nativeptr`1" = false ->
             let unresolvedGenerics = generics |> List.map (snd >> (tryResolveType generics)) |> List.filter Option.isNone
-            
+
             match com.TryGetEntity(entityRef.FullName) with
             | Some ent ->
                 let fields = ent.FSharpFields |> List.map (fun f -> f.FieldType)
@@ -427,7 +427,7 @@ module Query =
         let mutable returnValue = None
         expr |> Transforms.AST.visitFromOutsideIn (fun expr ->
             match f expr with
-            | Some value -> 
+            | Some value ->
                 if returnValue = None then
                     returnValue <- Some (value, expr)
                 Some expr
@@ -452,6 +452,7 @@ module Query =
             match expr with
             | Sequential _ | Let _ | WhileLoop _ | ForLoop _
     //        | Delegate _
+            | TryCatch _
             | Lambda _ -> false
             | IfThenElse (guard, thenExpr, elseExpr, _range) ->
                 isSimpleExpr guard && isSimpleExpr thenExpr && isSimpleExpr elseExpr
@@ -479,11 +480,11 @@ module Query =
             | DecisionTreeSuccess _ -> false
             | DecisionTree(expr, targets) -> false
             | TypeCast (expr, typ) -> isSimpleExpr expr
-            | _ -> true 
+            | _ -> true
         // if result <> oldResult then
         //     log $"{Print.printObj expr}"
         oldResult
-        
+
     let isGenericDecl (memberDecl: MemberDecl) =
         let isGenericBody = isUnresolvedGenericType memberDecl.Body.Type
         let isGenericClass = memberDecl.Name.Contains "$"
@@ -498,7 +499,7 @@ module Query =
         let memberDeclHasGenericArgs =
             memberDecl.Args |> List.exists (fun i -> isUnresolvedGenericType i.Type)
         isGenericBody || isGenericClass || hasGenericArgs || memberDeclHasGenericArgs
-    
+
     /// Tests whether the expression must be expressed in a non-expression language (like C) as a series of statements
     let isComplexExpr = isSimpleExpr >> not
 
@@ -531,14 +532,14 @@ let log (s: string) =
         #endif
     //printfn $"{line}:\n{s}\n"
     ()
-    
+
 type MemberDeclTransform = {
     memberDecl: MemberDecl
     m: MemberFunctionOrValue
 }
 type GenericUsage =
     | MethodCall of expr: Expr * callInfo: CallInfo * _type: Type * range: SourceLocation option
-    
+
 type GenericInteraction =
     | MethodCall of _member: MemberFunctionOrValue * fableMethodName: string * genericParams: Type list
     | Instantiation of fullName: string * genericParams: Type list
@@ -601,12 +602,12 @@ let findGenerics (com: Type.ICompiler) (compiler: MyCompiler) generics expr : (G
         let fromType = pullGenericTypeUsages com expr.Type |> List.map (fun a -> a, Unchecked.defaultof<_>)
         let fromBody =
             match expr with
-            | Call(IdentExpr ident, info, typ, range) 
+            | Call(IdentExpr ident, info, typ, range)
                     when info.GenericArgs.Length > 0 ->
                 match info.MemberRef |> Option.bind com.TryGetMember with
                 | Some fsMember ->
                     [ ((GenericInteraction.MethodCall (fsMember, fsMember.CompiledName, info.GenericArgs |> List.map (resolveType generics))), expr) ]
-                | None -> 
+                | None ->
                     log $"Could not find member for ident call:\n {Print.printObj 0 info}\n{Print.printObj 0 expr}"
                     []
             | Call(Import(importInfo, import_type, import_source_location), callInfo, callType, callSourceLocation) ->
@@ -615,7 +616,7 @@ let findGenerics (com: Type.ICompiler) (compiler: MyCompiler) generics expr : (G
                     try
                         let _member =
                             com.TryGetMember(MemberRef(declaringEntity, memberRefInfo))
-                            
+
                             // todo
                             |> Option.defaultWith (fun () ->
                                     compiler.GetMember(declaringEntity.FullName.Split(char "`").[0] + "." +
@@ -627,7 +628,7 @@ let findGenerics (com: Type.ICompiler) (compiler: MyCompiler) generics expr : (G
                         for m in compiler.Members.Value.Values do
                             log $"{m.FullName}"
                         []
-                    
+
                 | ClassImport entityRef ->
                     // log $"%A{entityRef}"
                     []
@@ -679,13 +680,13 @@ let findGenerics (com: Type.ICompiler) (compiler: MyCompiler) generics expr : (G
             | _ -> []
         fromType @ fromBody
     ) expr |> List.filter (fun l -> l.Length <> 0)
-    
+
 let rec findGenericInstantiations (depth: int) (expr: Expr) : (GenericInteraction * Expr) list =
     let o = FSharp.Reflection.FSharpValue.GetUnionFields (expr, expr.GetType())
 //    for i in 1..depth do
 //        printf "    "
 //    printfn $"    | Fable.{(fst o).Name}"
-    
+
     match expr with
     | Call(callee, callInfo, _type, sourceLocationOption) ->
         let m = callInfo.MemberRef |> Option.map database.contents.GetMember
@@ -759,15 +760,15 @@ module Display =
         match memberDecl.MemberRef with
         | MemberRef(declaringEntity, memberRefInfo) ->
             let isGeneric = Query.isGenericDecl memberDecl
-                
+
             let genericParamNames = memberRefInfo.NonCurriedArgTypes |> Option.map Query.pullGenericTypes
-            
+
 //            if not isGeneric then
             let compiledName =
                 (m.FullName.Substring(0, m.FullName.LastIndexOf(".")) + "_" + memberDecl.Name)
                     .Replace(".", "_")
             printfn $"    compiledName = {compiledName}"
-                
+
             if memberDecl.Name.Contains "cast" then
                 ()
             printfn $"    isGeneric = {isGeneric}"
@@ -869,7 +870,7 @@ type Print =
                 (Print.indent depth) + $"(* List.{name} *) [\n{result}\n{Print.indent depth}]"
             else
                 (Print.indent depth) + Print.printUnion "" depth o
-                
+
         elif FSharpType.IsRecord(o.GetType()) then
             let fields = FSharpValue.GetRecordFields(o)
             let fieldNames = FSharpType.GetRecordFields(o.GetType()) |> Array.map (fun p -> p.Name)
@@ -919,7 +920,7 @@ type Print =
                 | :? MemberRef as memberRef ->
                     match memberRef with
                     | MemberRef(declaringEntity, memberRefInfo) ->
-                        
+
                         let _member = database.contents.TryGetMember(memberRef) |> Option.map (fun m -> m.Attributes |> Seq.toArray |> Array.map (fun a -> a.Entity.FullName, a.ConstructorArgs))
                         $"%A{_member}"
                     | GeneratedMemberRef generatedMember ->
@@ -938,7 +939,7 @@ type Print =
     //            sb.Append(" ") |> ignore
             sb.Append(Print.indent depth).Append(result).ToString()
         with error -> $"{error}"
-        
+
     static member printExpr depth (expr: Expr) : string =
         let rec loop depth (expr: Expr) : string =
             let sb = StringBuilder()
@@ -1141,7 +1142,7 @@ let isArgValueThis generics (com: Type.ICompiler) (arg: Ident) : Ident option =
             match (tryResolveType generics genericArgs.[0]) with
             | Some (DeclaredType(entityRef, _)) ->
                 match com.TryGetEntity(entityRef) with
-                | Some ent when ent.IsValueType -> 
+                | Some ent when ent.IsValueType ->
                     //Some { arg with Name = "this_value"; Type = genericArgs.[0] }
                     None
                 | _ -> None
@@ -1163,12 +1164,12 @@ let isEntryPoint (com: Type.ICompiler) (m: MemberDecl) =
         let attributes = _member.Attributes |> Seq.toList
         attributes |> Seq.exists (fun a -> a.Entity.FullName = "Microsoft.FSharp.Core.EntryPointAttribute")
     | _ -> false
-    
+
 let typeFullName (t: Type) =
     match t with
     | DeclaredType(entityRef, genericArgs) -> entityRef.FullName
     | _ -> "" // todo
-let unwrapLambda ident body =    
+let unwrapLambda ident body =
     let rec loop acc (body: Expr) : Ident list * Expr =
         match body with
         | Lambda(ident, body, stringOption) -> loop (acc @ [ ident ]) body

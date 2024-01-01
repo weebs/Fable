@@ -1,4 +1,5 @@
-﻿module rec Fable.C.Fable2C
+﻿module rec Fable.C.Writer
+
 
 open System.Text
 open System.Threading
@@ -21,7 +22,6 @@ open Transforms
 //open type print
 open Fone.DataType
 
-type CompiledAst = { includes: string list; compiledModule: Map<string, C.ModuleDeclaration> ref; static_constructor: (ActionDecl * C.Statement list) list }
 #if !FABLE_COMPILER
 let launchProcess workingDirectory (name: string) (args: #seq<string>) =
     let start = ProcessStartInfo();
@@ -35,7 +35,7 @@ let launchProcess workingDirectory (name: string) (args: #seq<string>) =
     // start.RedirectStandardInput <- false
     start
 #endif
-        
+
 //let compilationResults: Map<string, FileCompilationResults> ref = ref Map.empty
 //let genericClassDeclarations = ref Map.empty
 //let classDeclarations: Map<string, ClassDecl> ref = ref Map.empty
@@ -47,12 +47,12 @@ let launchProcess workingDirectory (name: string) (args: #seq<string>) =
 //    open Bolero.Html
 //    type App() =
 //        inherit Bolero.Component()
-//        
+//
 //        let mutable count = 0
-//        
+//
 //        override this.OnInitialized() =
 //            ()
-//        
+//
 //        override this.Render() =
 //            div {
 //                span { text "Hello!" }
@@ -89,7 +89,7 @@ let launchProcess workingDirectory (name: string) (args: #seq<string>) =
 //                    app.Run())).Start()
 ////                }
 //        appTask.Value
-        
+
 
 type Build = // todo: a lot of what i want is already available in some of the fable util module
     static member Let (name: string, value: Expr) body =
@@ -103,7 +103,7 @@ let test_expr () =
     Build.Let("foo", Build.Value("asdf")) <|
         Value(ValueKind.UnitConstant, None)
 
-//let app = ref (Unchecked.defaultof<_>)    
+//let app = ref (Unchecked.defaultof<_>)
 // let transformFsFile (_com: Fable.Compiler) (file: File) =
 // //    app.Value <- Window.startApp ()
 //     if _com.CurrentFile.Contains ".fsx" then
@@ -132,11 +132,13 @@ let createMainFunction (actualMain: string option) : C.FunctionInfo =
                     _type = C.Ptr C.Void
                     name = "ptr"
                     value = C.ExprAssignment <| C.Call("malloc", [ C.Expr.Emit "sizeof(args)" ])
+                    requiresTracking = false
                 }
                 C.Declaration {
                     _type = C.Ptr <| C.Type.UserDefined ("System_Array__charptr", false, None)
                     name = "string_args"
                     value = C.ExprAssignment <| C.Call("System_Array__charptr_ctor", [ C.Expr.Emit "argc"; C.Expr.Emit "ptr" ])
+                    requiresTracking = false
                 }
             | _ -> ()
 
@@ -150,7 +152,7 @@ let createMainFunction (actualMain: string option) : C.FunctionInfo =
     }
 let writeMainFile (projHeaderName: string) (actualMain: string option) =
     let main: C.FunctionInfo = createMainFunction actualMain
-    
+
     $"// #include \"{projHeaderName}\"\n\n" +
     (Compiler.writeFunction (SourceBuilder()) main)
 
@@ -173,14 +175,14 @@ let writeModuleHeaderFile context (projPath: string) =
     let projHeaderName = IO.Path.GetFileNameWithoutExtension(projPath) + ".h"
     let srcDir = Path.Combine(buildDir, "build")
     let path = Path.Combine (srcDir, projHeaderName)
-    let def_name = 
+    let def_name =
         IO.Path.GetFileNameWithoutExtension(projPath)
             .Replace(".", "_")
             .Replace("-", "_") + "_header"
     let sb = CompiledOutputBuilder()
     sb
-        .AppendLine($"#pragma once") 
-        // .AppendLine($"#ifndef {def_name}") 
+        .AppendLine($"#pragma once")
+        // .AppendLine($"#ifndef {def_name}")
         .AppendLine($"#define {def_name}") |> ignore
     let packagesToInclude = includedPackages.Value
     for package in packagesToInclude do
@@ -232,6 +234,8 @@ let writeModuleHeaderFile context (projPath: string) =
         // .AppendLine("_Thread_local static int __thread_context = 0;")
         // .AppendLine("#endif")
         .AppendLine("")
+    |> ignore
+    sb.AppendLine("static thread_local int __thread_context = 0;")
     |> ignore
 
     // Write static initializer functions (module do ... expressions)
@@ -376,7 +380,7 @@ let writeModuleHeaderFile context (projPath: string) =
                 //     launchProcess "sh" [ makefilePath ]
                 // else
             log $"Building wasm: {wasm_path}"
-            let buildInfo = 
+            let buildInfo =
                 launchProcess (io.path.join(buildDir, "build/")) "sh" [ wasm_path ]
             let build = Process.Start(buildInfo)
             build.WaitForExit()
@@ -388,7 +392,7 @@ let writeModuleHeaderFile context (projPath: string) =
 
 let writeNesHeader context (projPath: string) =
     let result = writeModuleHeaderFile context projPath
-    let file = 
+    let file =
         result.file.Replace("#include <stdio.h>
     #include <stdbool.h>
     #include <stdlib.h>

@@ -1,4 +1,4 @@
-module Fone.Database
+﻿module Fone.Database
 
 open Fable
 open Fable.AST.Fable

@@ -49,7 +49,7 @@ let __struct = ""
 //                 { context with generic_structs = Map.add name (args :: existing) context.generic_structs }
 //         else
 //             { context with generic_structs = Map.add name [ args ] context.generic_structs }
-        
+
 type FSharp.Collections.List<'t> with
     member this.trySkip (i: int) =
         if this.Length >= i then
@@ -62,7 +62,7 @@ type FSharp.Collections.List<'t> with
 //
 //    let options = JsonSerializerOptions()
 //    options.Converters.Add(JsonFSharpConverter())
-//    
+//
 //    let serialize o = JsonSerializer.Serialize(o, options)
 //    let deserialize<'t> (s: string) = JsonSerializer.Deserialize<'t>(s, options)
 
@@ -80,17 +80,17 @@ let writeArg ((name, _type): string * C.Type) =
         let s = System.String.Join(", ", types |> List.map (fun t -> t.ToTypeString()))
         $"{returnType.ToTypeString()} (*{name})({s})"
     | _ ->
-        $"{_type.ToTypeString()} {name}"   
+        $"{_type.ToTypeString()} {name}"
 let writeFunctionArgs (args: (string * C.Type) list) =
     if args.Length = 1 && (snd args[0]) = C.Void then
         ""
     else
         System.String.Join(", ", List.map writeArg args)
-        
+
 let valueToString (value: C.ValueKind) : string =
     match value with
     | C.ValueKind.CStr s -> $"\"{s}\""
-    | C.ValueKind.Char c -> 
+    | C.ValueKind.Char c ->
         let s = (string c).Replace("\n", "\\n").Replace("\t", "\\t")
         $"'{s}'"
     | C.ValueKind.Void -> ""
@@ -145,7 +145,7 @@ let valueToString (value: C.ValueKind) : string =
         // Most of the time we can call toString on the second param (ex: 248.ToString() -> "248")
         (Microsoft.FSharp.Reflection.FSharpValue.GetUnionFields(value, typeof<C.ValueKind>) |> snd)[0] |>
             function
-            | :? double as d -> 
+            | :? double as d ->
                 let n = string d
                 if n.Contains "." = false then n + ".0"
                 else n
@@ -167,7 +167,7 @@ let rec _writeExpr (expr: C.Expr) : string =
     | C.Ternary(cond, onTrue, onFalse) ->
         $"{_writeExpr cond} ? {_writeExpr onTrue} : {_writeExpr onFalse}"
     | C.Binary (op, left, right) ->
-        let op_string = 
+        let op_string =
             match op with
             | C.Add -> "+"
             | C.Mult -> "*"
@@ -187,10 +187,10 @@ let rec _writeExpr (expr: C.Expr) : string =
             match e with
             | C.Binary _ -> true
             | _ -> false
-        let left = 
+        let left =
             let expr = _writeExpr left
             if isBinary left then $"({expr})" else expr
-        let right = 
+        let right =
             let expr = _writeExpr right
             if isBinary right then $"({expr})" else expr
         $"{left} {op_string} {right}"
@@ -260,16 +260,22 @@ type SourceBuilder with
     member this.AppendStatement(statement: C.Statement) =
         this.AppendBuilder(writeStatement statement)
     member this.AppendStatementInline(statement: C.Statement) =
-        let s = (writeStatement statement).ToString()
+        // todo: Possible bug from removing \r
+        let s = (writeStatement statement).ToString().Replace("\r\n", "\n")
         if s.EndsWith(";\n") then s.Substring(0, s.Length - 2) else s
         |> SourceBuilder.From
         |> this.AppendBuilderInline
-        
+
  // todo this actually needs to be a random guid or ptr actually. inc ID will cause issues,
  // todo it needs to be instanced per call not per definition
-let rootId = ref 0uL 
+let rootId = ref 0uL
 let doRaii (body: C.Statement list) (sb: SourceBuilder) =
     let useRoot = body |> List.exists (fun s -> s.RequiresDestructor.IsSome)
+    let requiresDestructor s =
+        match s with
+        | C.Declaration info -> info.requiresTracking
+        | _ -> false
+    let idents = body |> List.filter requiresDestructor
     let root =
         if useRoot then
             rootId := rootId.contents + 1uL
@@ -287,7 +293,15 @@ let doRaii (body: C.Statement list) (sb: SourceBuilder) =
     for s in body do
         // todo: we also need to handle when a variable is reassigned
         sb.AppendStatement s |> ignore
-        match s.RequiresDestructor with
+        // match s.RequiresDestructor with
+    for i in idents do
+        match i with
+        | C.Declaration info ->
+            sb.AppendLine $"Runtime_end_var_scope({info.name}, {info._type.ToNameString()})"
+            |> ignore
+        | _ -> ()
+        // sb.AppendLine()
+        printfn $"{i}"
 //        | Some (typeName, varName) ->
 //            let ident = C.Ident ({
 //                Name = varName; Type = Unchecked.defaultof<_>; IsMutable = false; IsThisArgument = false; IsCompilerGenerated = false; Range = None
@@ -297,8 +311,8 @@ let doRaii (body: C.Statement list) (sb: SourceBuilder) =
 //            |> ignore
 //                sb.AppendStatement (C.Expression (C.Call ($"{typeName}__Finalize", [ ident ])))
 //                |> ignore
-        | _ ->
-            ()
+        // | _ ->
+            // ()
 //    if useRoot then ()
 //        sb.AppendLine $"// msg about root {root}"
 
@@ -309,9 +323,9 @@ let doRaii (body: C.Statement list) (sb: SourceBuilder) =
 //            .AppendLine($"release(root_{root});")
 //            .AppendLine($"free(root_{root});")
 //        |> ignore
-        
+
 //        sb.AppendStatement (C.Statement.Declaration ( {| _type = C.Type.UserDefined |}))
-            
+
 let rec _writeStmt (statement: C.Statement) : SourceBuilder =
     let sb = SourceBuilder()
     match statement with
@@ -350,7 +364,7 @@ let rec _writeStmt (statement: C.Statement) : SourceBuilder =
             | C.Default ->
                 sb.AppendLine($"{returnType.ToTypeString()} (*{decl.name})({s});")
         | _ ->
-            let prefix = "" //decl._type |> function C.Type.UserDefined _ -> "struct " | _ -> "" 
+            let prefix = "" //decl._type |> function C.Type.UserDefined _ -> "struct " | _ -> ""
             sb.Append prefix |> ignore
             match decl.value with
             | C.Default ->
@@ -363,15 +377,71 @@ let rec _writeStmt (statement: C.Statement) : SourceBuilder =
                 | _ -> ()
                 sb.AppendLine($"{decl._type.ToTypeString()} {decl.name} = {_writeExpr expr};")
             | C.StatementAssignment statement ->
+                let simpleExpr s =
+                    match s with
+                    | C.Expression expr -> true
+                    | _ -> false
+                let rec rewrite statements s =
+                    match s with
+                    | C.Expression expr ->
+                        C.Block ((statements |> List.take (statements.Length - 1)) @ [
+                            C.Emit $"{decl.name} = {_writeExpr expr};\n"
+                            C.Emit $"{decl.name}->__refcount++;\n"
+                        ])
+                    | C.Conditional (guard, ifTrue, ifFalse) ->
+                        // todo: nested if => recursion
+                        let ifTrue =
+                            let start = ifTrue |> List.take (ifTrue.Length - 1)
+                            // let returns = C.StatementAssignment (C.Expr.Emit decl.name, List.last ifTrue)
+
+                            // todo: if requiresTracking then increase refCount
+                            let returns =
+                                if simpleExpr (List.last ifTrue) then
+                                    [
+                                        C.Emit $"{decl.name} = {List.last ifTrue |> _writeStmt}"
+                                        if decl.requiresTracking then
+                                            C.Emit $"{decl.name}->__refcount++;"
+                                    ]
+                                else
+                                    [
+                                        // C.Emit $"{decl._type.ToTypeString()} {decl.name};"
+                                        rewrite [] (List.last ifTrue)
+                                    ]
+                            start @ returns
+                        let ifFalse =
+                            // let start = ifFalse |> List.take (ifFalse.Length - 1)
+                            // // todo: if requiresTracking then increase refCount
+                            // let returns = C.Emit $"{decl.name} = {List.last ifFalse |> _writeStmt}"
+                            // start @ [ returns ]
+                            let start = ifFalse |> List.take (ifFalse.Length - 1)
+                            // let returns = C.StatementAssignment (C.Expr.Emit decl.name, List.last ifTrue)
+
+                            // todo: if requiresTracking then increase refCount
+                            let returns =
+                                if simpleExpr (List.last ifFalse) then
+                                    [
+                                        C.Emit $"{decl.name} = {List.last ifFalse |> _writeStmt}"
+                                        if decl.requiresTracking then
+                                            C.Emit $"{decl.name}->__refcount++;"
+                                    ]
+                                else
+                                    [
+                                        // C.Emit $"{decl._type.ToTypeString()} {decl.name};"
+                                        rewrite [] (List.last ifFalse)
+                                    ]
+                            start @ returns
+                        C.Block [ C.Conditional (guard, ifTrue, ifFalse) ]
                 let statement =
                     match statement with
                     | C.Block statements ->
                         let lastStatement = statements[statements.Length - 1]
-                        match lastStatement with
-                        | C.Expression expr ->
-                            C.Block ((statements |> List.take (statements.Length - 1)) @ [ C.Emit $"{decl.name} = {_writeExpr expr};\n" ])
-                        | _ ->
-                            statement
+                        rewrite statements lastStatement
+                        // match lastStatement with
+                        // | C.Expression expr ->
+                        //     C.Block ((statements |> List.take (statements.Length - 1)) @ [ C.Emit $"{decl.name} = {_writeExpr expr};\n" ])
+                        // | C.Conditional (guard, ifTrue, ifFalse) ->
+                        // | _ ->
+                        //     statement
                     | _ ->
                         statement
                 // match decl._type with
@@ -435,7 +505,7 @@ let rec _writeStmt (statement: C.Statement) : SourceBuilder =
                 )
                 .AppendLine("}")
             |> ignore
-        sb 
+        sb
     | _ ->
         sb
 //    sb
@@ -459,14 +529,14 @@ let writeFunction (sb: SourceBuilder) (f: C.FunctionInfo) =
         .BeginBlock(fun sb -> writeStatements sb f.body)
         .AppendLine("}")
         .ToString()
-        
+
 let writeStructField (name: string, typ: C.Type) : string =
     $"{typ.ToTypeString()} {name}"
 
 //let writeGenerics (com: Fable.Compiler) (context: Context) : string =
 //    let sb = StringBuilder()
 //    sb.ToString()
-let structCompare (infoA: C.Struct) (infoB: C.Struct) = 
+let structCompare (infoA: C.Struct) (infoB: C.Struct) =
     if not (infoA.members |> List.exists (fun (_type, name) -> match _type with | C.Type.UserDefined _ -> true | _ -> false)) then
         -1
     elif not (infoB.members |> List.exists (fun (_type, name) -> match _type with | C.Type.UserDefined _ -> true | _ -> false)) then

@@ -41,23 +41,28 @@ let buildConstructor context generics genericParams (member_declaration: MemberD
                     else
                         C.ExprAssignment <| C.TypeCast (C.EmitType $"{typeName}*", (C.Expr.Emit $"malloc(sizeof({typeName}))"))
                 _type = return_type
+                requiresTracking = false
             }
             // todo: Runtime_track_var
-            // C.Statement.Expression <| 
+            // C.Statement.Expression <|
             //     C.Call ("Runtime_track_var", [ C.Expr.Emit "(void**)&this$" ])
 //                if not (ent.IsValueType) then
 //                    // todo: re-enable this
 //                    C.Statement.Emit $"Runtime_set_finalizer(this$, &{finalizer_name});"
+            C.Emit "__thread_context++;"
             C.Emit $"this$->__refcount = 1;"
             yield! f
             C.Statement.Emit ("// use_gc_for_address()")
             // todo: This should actually return ident, but is this ok for now?
             C.Emit $"this$->__refcount = this$->__refcount - 1;"
-            C.Return (C.Expr.Emit "this$")
+            // todo: This should use autorelease
+            // todo: Do constructors need to use thread context?
+            C.Emit "__thread_context--;"
+            C.Return (C.Expr.Emit "Runtime_autorelease(this$)")
         ]
     }
     (id, type_sig, function_info)
-    
+
 let buildFinalizer generics genericParams (ent: Entity) =
     let name = Print.compiledTypeName((List.map (transformType generics) genericParams), ent.FullName)
     let fields = ent.FSharpFields
@@ -92,14 +97,26 @@ let transformFunc context (name: string) (args: Ident list) (funcBody: Expr) (ge
     let addReturn (generics: (string * Type) list) (expr: Expr) : C.Statement list =
         let rec loop (generics: (string * Type) list) (body: C.Statement list) : C.Statement list =
             let last =
+                // match (if (requiresTracking generics expr.Type) then body[body.Length - 2] else List.last body) with
+                // match (if body.Length > 1 then body[body.Length - 2] else List.last body) with
                 match List.last body with
-                | C.Expression expr ->
-                     [
-                         if body.Length > 1 then
-                             // C.Emit "// __thread_context--;"
-                             ()
-                         C.Return (C.Expr.Emit <| Compiler.writeExpression expr)
-                     ]
+                | C.Expression cExpr ->
+                    [
+                        // if body.Length > 1 then
+                            // C.Emit "// __thread_context--;"
+                            // ()
+                        // C.Emit "// __thread_context--;"
+                        // todo: If the return type requires tracking, then it needs to be tracked with autorelease
+                        // ex: returning obj.aString while later obj is unassigned which would clean up aString too early
+                        if requiresTracking generics expr.Type then
+                            // todo: Assign to toReturn
+                            // C.Return (C.Expr.Emit $"Runtime_autorelease({Compiler.writeExpression cExpr})")
+                            (C.Emit $"__toReturn = {Compiler.writeExpression cExpr};")
+                            (C.Emit "__toReturn->__refcount++;")
+                        else
+                            (C.Emit $"__toReturn = {Compiler.writeExpression cExpr};")
+                            // C.Return (C.Expr.Emit (Compiler.writeExpression cExpr))
+                    ]
                 | C.Conditional(guard, ifTrue, ifFalse) ->
                     let ifTrue = loop generics ifTrue
                     let ifFalse = loop generics ifFalse
@@ -109,9 +126,9 @@ let transformFunc context (name: string) (args: Ident list) (funcBody: Expr) (ge
         let body = transformMember context generics expr
         if expr.Type = Type.Unit then // || body.Length = 1 then
             [
-                // C.Emit "// __thread_context++;"
+                C.Emit "// __thread_context++;"
                 yield! body
-                // C.Emit "// __thread_context--;"
+                C.Emit "// __thread_context--;"
             ]
     //    elif body.Length = 1 then
     //        [
@@ -119,9 +136,17 @@ let transformFunc context (name: string) (args: Ident list) (funcBody: Expr) (ge
     //        ]
         else
             [
+                // if requiresTracking generics expr.Type then
+                C.Emit $"{(transformType generics funcBody.Type).ToTypeString()} __toReturn;"
+                C.Emit "// __thread_context++;"
                 if body.Length > 1 then
                     () // C.Emit "// __thread_context++;"
                 yield! loop generics body
+                C.Emit "// __thread_context--;"
+                if requiresTracking generics expr.Type then
+                    C.Return (C.Expr.Emit "Runtime_autorelease(__toReturn)")
+                else
+                    C.Return (C.Expr.Emit "__toReturn")
             ]
     let dir = IO.Path.GetDirectoryName(context.currentFile)
     let filename = IO.Path.GetFileName(context.currentFile)
@@ -133,16 +158,17 @@ let transformFunc context (name: string) (args: Ident list) (funcBody: Expr) (ge
         |> ignore
     try
         Console.WriteLine $"Writing AST file to {debug_dir} {name}.debug.fs"
-        IO.File.WriteAllText (IO.Path.Join(debug_dir, name + ".debug.fs"), result)
+        // IO.File.WriteAllText (IO.Path.Join(debug_dir, name + ".debug.fs"), result)
+        io.file.write (IO.Path.Join(debug_dir, name + ".debug.fs"), result)
     with
         error -> printfn $"{error}"
 //    print.printfn $"{result}"
-    
+
     // todo: no io in transforms!
     // if not (IO.Directory.Exists(io.path.join(dir, "build"))) then
     //     IO.Directory.CreateDirectory(io.path.join(dir, "build"))
     //     |> ignore
-    
+
     let result = result.Replace("\n\n\n", "")
     io.file.AppendAllText(io.path.join(dir, $"build/{filename}.debug.fs"), $"let {name}_original () =\n{result}\n\n")
     io.file.AppendAllText(io.path.join(dir, $"build/{filename}.{name}.debug.fs"), $"let {name} () =\n{result}\n\n")
@@ -152,7 +178,7 @@ let transformFunc context (name: string) (args: Ident list) (funcBody: Expr) (ge
 //    let (args, extra_statements) = args, []
     let rt = transformType generics funcBody.Type
     let body = addReturn generics funcBody
-            
+
     print.printfn $"[Fable.NativeCode] Transforming function: {name}"
 //        let result = Print.printExpr 1 (applyTransformations funcBody)
 //        let result = result.Replace("\n\n\n", "")
@@ -218,7 +244,7 @@ module Type =
     let transformDeclaration context (com: Type.ICompiler) (generics: (string * Type) list) (classDecl: ClassDecl) : _ list * Map<_,_> =
         let entityRef = classDecl.Entity
         match com.TryGetEntity(classDecl.Entity) with
-        | None -> 
+        | None ->
             print.printfn $"\n\nCouldn't find entity {classDecl.Entity}"
             [], Map.empty
         | Some ent ->
@@ -238,7 +264,7 @@ module Type =
                     let ent = com.GetEntity(classDecl.Entity)
                     // Filter out types that inherit from System.Attribute
                     if ent.BaseType |> Option.map (fun t -> t.Entity.FullName) <> Some "System.Attribute" then
-                        let (name, type_signature, f) = 
+                        let (name, type_signature, f) =
                             Function.buildConstructor context [] [] constructor ent.FullName ent.IsValueType
 
                         print.printfn $"Compiling function {f.id}"
@@ -332,7 +358,7 @@ module Generics =
         ent |> Option.map (fun ent -> ent.GenericParameters |> List.map (fun p -> p.Name))
         |> Option.defaultValue []
     let getFields (c: ClassDecl) : (string * C.Type) list =
-        // let ent = 
+        // let ent =
         compiler.TryGetEntity(c.Entity.FullName)
         |> Option.map (fun ent -> ent.FSharpFields |> List.map (fun f -> f.Name, transformType [] f.FieldType))
         |> Option.defaultValue []
@@ -357,6 +383,6 @@ module Generics =
             let function_info = Function.transformFunc context name member_declaration.Args member_declaration.Body generics
             Transforms.debugger.contents <- false
             (name, type_sig, function_info)
-// #if !INTERACTIVE            
+// #if !INTERACTIVE
 // [<EntryPoint>]
 // #endif
