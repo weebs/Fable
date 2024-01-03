@@ -160,21 +160,61 @@ typedef struct System_Array__{t.ToNameString()} {{
     {t.ToTypeString()}* data;
 }} System_Array__{t.ToNameString()};
 
-{typeName}* {typeName}_ctor(int size, {t.ToTypeString()}* data);"
+{typeName}* {typeName}_ctor(int size, {t.ToTypeString()}* data);
+void {typeName}_Destructor({typeName}* this$);
+
+void {typeName}_set_Item({typeName}* this$, int index, {t.ToTypeString()} value);
+{t.ToTypeString ()} {typeName}_get_Item({typeName}* this$, int index);
+{typeName}* {typeName}_alloc(int size);
+"
                 let ctor = $"""
 {typeName}* {typeName}_ctor(int size, {t.ToTypeString()}* data) {{
     {typeName}* this$ = malloc(sizeof({typeName}));
     this$->__refcount = 1;
     this$->length = size;
-    this$->data = malloc(sizeof({t.ToTypeString()})* size);
+    this$->data = malloc(sizeof({t.ToTypeString()}) * size);
     for (int i = 0; i < size; i++) {{
         this$->data[i] = data[i];
         {if requiresTracking [] genericParms[0] then "this$->data[i].__refcount++;" else ""}
     }}
-    return ({typeName}*)Runtime_autorelease(this$);
+    return ({typeName}*)Runtime_autorelease(this$, {typeName}_Destructor);
+}}
+
+{typeName}* {typeName}_alloc(int size) {{
+    {typeName}* this$ = malloc(sizeof({typeName}));
+    this$->__refcount = 1;
+    this$->length = size;
+    this$->data = malloc(sizeof({t.ToTypeString()}) * size);
+    // TODO: initialize values
+    return ({typeName}*)Runtime_autorelease(this$, {typeName}_Destructor);
+}}
+
+void {typeName}_set_Item({typeName}* this$, int index, {t.ToTypeString()} value) {{
+    this$->data[index] = value;
+    {if requiresTracking [] genericParms[0] then "this$->data[index].__refcount++;" else ""}
+}}
+
+{t.ToTypeString ()} {typeName}_get_Item({typeName}* this$, int index) {{ return this$->data[index]; }}
+void {typeName}_Destructor({typeName}* this$) {{
+    {
+        if (requiresTracking [] genericParms[0]) then
+            $"
+        for (int i = 0; i < this$->length; i++) {{
+            Runtime_end_var_scope(this$->data[i], {t.ToTypeString ()}_Destructor);
+        }}
+            "
+        else
+            ""
+    }
+    free(this$->data);
+    free(this$);
 }}
 """
-                generic_implementations.Add(decl, ctor)
+                if added_types.Contains typeName then
+                    ()
+                else
+                    added_types.Add typeName
+                    generic_implementations.Add(decl, ctor)
             | Instantiation(fullName, genericParams) when compiler.genericClassDeclarations.Value.ContainsKey fullName || fullName.StartsWith("System.Array") ->
                 let classDecl = compiler.genericClassDeclarations.Value.[if fullName = "System.Array" then "System.Array`1" else fullName]
 //                let ent = database.contents.GetEntity(classDecl.Entity)
@@ -254,6 +294,12 @@ typedef struct System_Array__{t.ToNameString()} {{
                     added_types.Add(name)
 
                     let constructor_name = name + "_ctor"
+                    if not ent.IsValueType then
+                        let finalizer_id = $"{name}_Destructor"
+                        if not (added_functions.Contains(finalizer_id)) then
+                            added_functions.Add(finalizer_id)
+                            let finalizer_implementation = Function.buildFinalizer generics genericParams ent
+                            generic_implementations.Add(($"void {name}_Finalizer(struct {name}* this$);"), (Compiler.writeFunction (SourceBuilder()) finalizer_implementation))
                     if classDecl.Constructor.IsSome then
                         let generic_instantiations =
                             fields
@@ -266,12 +312,6 @@ typedef struct System_Array__{t.ToNameString()} {{
                             added_functions.Add(id)
         //                    sb.AppendLine (Compiler.writeFunction (SourceBuilder()) function_info) |> ignore
                             generic_implementations.Add((type_sig, Compiler.writeFunction (SourceBuilder()) function_info))
-                    if not ent.IsValueType then
-                        let finalizer_id = $"{name}_Finalizer"
-                        if not (added_functions.Contains(finalizer_id)) then
-                            added_functions.Add(finalizer_id)
-                            let finalizer_implementation = Function.buildFinalizer generics genericParams ent
-                            generic_implementations.Add(($"void {name}_Finalizer(struct {name}* this$);"), (Compiler.writeFunction (SourceBuilder()) finalizer_implementation))
             | Instantiation(fullName, genericParams) when not (compiler.genericClassDeclarations.Value.ContainsKey fullName) ->
                 let generic_param_text_types = genericParams |> List.map (fun t -> (transformType [] t).ToTypeString())
                 generic_macro_defs_to_call.Add((fullName, generic_param_text_types))
@@ -373,7 +413,7 @@ typedef struct System_Array__{t.ToNameString()} {{
                                     generic_interactions <- generic_instantiations @ generic_interactions
                             //let type_sig = Print.compiledTypeSignature (generics, transformType, database.contents, member_declaration)
                             if fableMethodName.Contains "ctor" then
-                                let finalizer_id = $"{typeName}_Finalizer"
+                                let finalizer_id = $"{typeName}_Destructor"
                                 if not (added_functions.Contains(finalizer_id)) then
                                     added_functions.Add(finalizer_id)
                                     let finalizer_implementation = Function.buildFinalizer generics genericParams ent

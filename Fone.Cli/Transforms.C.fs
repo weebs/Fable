@@ -409,9 +409,10 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
             // let data = $"({(transformType generics typ).ToTypeString()}[]){{ {array_values} }}"
             let data = $"{{ {array_values} }}"
 
-            let t = $"{(transformType generics typ).ToNameString()}"
+            let t = (transformType generics typ)
+            let tName = $"{t.ToNameString()}"
             let argsTxt = values |> List.map (transformExpr ctx generics) |> List.map Compiler.writeExpression |> String.concat ", "
-            C.ValueKind.Emit $"System_Array__{t}_ctor({values.Length}, ( ( {t}[{values.Length}] ) {{{argsTxt}}} ) )"
+            C.ValueKind.Emit $"System_Array__{tName}_ctor({values.Length}, ( ( {t.ToTypeString()}[{values.Length}] ) {{{argsTxt}}} ) )"
             // C.ValueKind.Emit $"({{ int length = {length}; {t2} data[] = {data}; void* copy = malloc({length}); memcpy(copy, data, length); {arrType}* array = malloc(sizeof({arrType})); array->length = {values.Length}; array->data = copy; array; }})"
             // C.ValueKind.Emit $"(void*)0 /* {{ %A{array_values} }} */"
         | Fable.ArrayAlloc size ->
@@ -810,6 +811,11 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                 | IdentExpr ident ->
                     ident.IsThisArgument || ident.Name = "this$"
                 | _ -> false
+            let isThis =
+                match expr with
+                | Fable.Value (Fable.ThisValue typ, _range) ->
+                    true
+                | _ -> false
             let exprIsByref =
                 match expr.Type with
                 | DeclaredType(entityRef, genericArgs) -> entityRef.FullName = Const.byrefType || entityRef.FullName = Const.byrefType2
@@ -828,7 +834,8 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                         | _ ->
                             match database.contents.TryGetEntity(entityRef) with
                             | Some ent ->
-                                if not ent.IsValueType &&
+                                if isThis then C.MemberAccess
+                                elif not ent.IsValueType &&
                     //                                           // Extension methods for structs have a this arg that's passed as a byref
                                       (not (isThisArguments && exprIsByref)) then C.DerefMemberAccess
                                    elif exprIsByref && isThisArguments then C.DerefMemberAccess
@@ -1338,7 +1345,7 @@ let transformLet ctx generics (ident: Ident) value (body: Expr) =
                 let name =
                     match variable_type with
                     | C.Ptr t | t -> t.ToNameString()
-                let finalizer_id = $"{name}_Finalizer"
+                let finalizer_id = $"{name}_Destructor"
                 // [ C.Expression <| C.Call ("Runtime_end_var_scope", [ C.TypeCast (C.EmitType "void**", C.Expr.Emit $"&{ident.Name}"); C.Expr.Emit ("(void*)" + finalizer_id) ]) ]
                 []
                 // [ C.Emit $"{ident.Name}->__refcount--;" ]
@@ -1607,10 +1614,11 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
                     if requiresTracking generics value.Type then
                         let e = transformExpr ctx generics value
                         let _member = (accessType ((transformExpr ctx generics expr), fieldName))
+                        let (C.Ptr valueType) = transformType generics value.Type
                         // todo: reassign
                         // [ C.Emit $"Runtime_reassign_field((void**)&{Compiler.writeExpression _member}, {Compiler.writeExpression e});" ]
                         [
-                            C.Emit $"Runtime_reassign_field((void**)&{Compiler.writeExpression _member}, {Compiler.writeExpression e});"
+                            C.Emit $"Runtime_reassign_field((void**)&{Compiler.writeExpression _member}, {Compiler.writeExpression e}, {valueType.ToNameString()}_Destructor);"
                             // C.Assignment ((accessType ((transformExpr ctx generics expr), fieldName)), transformExpr ctx generics value)
                         ]
                     else

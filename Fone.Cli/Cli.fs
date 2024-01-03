@@ -89,10 +89,99 @@ module Compiler =
         //         member this.GetMember memberRef = Unchecked.defaultof<_>
         // }
         let c_file = Fable.C.File.transformFile com transformedFile
-        let output = Fable.C.File.writeFile filePath c_file.includes c_file.compiledModule c_file.static_constructor
+        let output =
+            Fable.C.File.writeFile filePath c_file.includes c_file.compiledModule c_file.static_constructor
         let header = Fable.C.Writer.writeModuleHeaderFile { currentFile = "" } "/build/project.json"
         let files = io.files
         let generics = files |> Seq.find (fun kv -> kv.Key.Contains ".generics.")
+        let runtime = """
+typedef struct ref {
+    void* data;
+    int context;
+    void* f;
+} ref;
+typedef struct Runtime_pool {
+    int size;
+    int n;
+    ref* data;
+} Runtime_pool;
+
+static Runtime_pool pool = { .size = 0, .n = 0, .data = 0 };
+
+void Runtime_pool_track (void* addr, void* f) {
+    (*(unsigned char*)addr)++;
+    if (pool.n >= pool.size) {
+        pool.size = pool.size == 0 ? 1 : pool.size * 2;
+        ref* copy = pool.data;
+        //int* copyctx = pool.context_data;
+        pool.data = malloc(sizeof(ref) * pool.size);
+        //pool.context_data = malloc(sizeof(int) * pool.size);
+        for (int i = 0; i < pool.n; i++) {
+            pool.data[i] = copy[i];
+            //pool.context_data[i] = copyctx[i];
+        }
+        free(copy);
+    }
+    ref value = { .data = addr, .context = __thread_context + 1, .f = f };
+    pool.data[pool.n] = value;
+    //pool.context_data[pool.n] = __thread_context;
+    pool.n++;
+}
+
+void Runtime_clear_pool() {
+    for (int i = 0; i < pool.n; i++) {
+        ref r = pool.data[i];
+        printf("Checking address %p\n", r.data);
+        unsigned char* p = r.data;
+        *p = *p - 1;
+        unsigned char count = *(unsigned char*)r.data;
+        if (count <= 0 && r.context > __thread_context) {
+            void (*f)(void*) = r.f;
+            printf("Autorelease freeing %p\n", r.data);
+            f(r.data);
+        }
+    }
+    pool.size = 0;
+    pool.n = 0;
+    free(pool.data);
+    pool.data = 0;
+}
+
+void* Runtime_autorelease(void* ptr, void* destructor) {
+    printf("Autorelease %p\n", ptr);
+    unsigned char* p = ptr;
+    *p = *p - 1;
+    //void (*f)(void*) = destructor;
+    // todo: Only track when *p > 0 ?
+    Runtime_pool_track(ptr, destructor);
+    //if (*p == 0) {
+        //f(ptr);
+    //}
+    return ptr;
+}
+void Runtime_end_var_scope(void* ptr, void* destructor) {
+    unsigned char* p = ptr;
+    void (*f)(void*) = destructor;
+    *p = *p - 1;
+    if (*p <= 0) {{
+        printf("Freeing %p\n", ptr);
+        f(ptr);
+    }}
+}
+void Runtime_reassign_field(void** location, void* value, void* destructor) {
+    if (*location == value) { return; }
+    unsigned char* p = value;
+    *p = *p + 1;
+    void* oldValue = *location;
+    *location = value;
+    Runtime_end_var_scope(oldValue, destructor);
+}
+"""
+        let compiledOutput =
+            $"{header.file}\n{runtime}\n{header.generics}\n{output}"
+            |> _.Replace("\r\n", "\n").Replace("\r", "")
+        let outputPath = projFile.Replace (".fsproj", ".fs.c")
+        File.WriteAllText (outputPath, compiledOutput)
         ()
 
 [<EntryPoint>]
