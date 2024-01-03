@@ -8,6 +8,8 @@
   <ItemGroup>
     <Compile Include="QuickTest.fs" />
     <Content Include="quicktest.fs.js" />
+    <Content Include="*.fs.h" />
+    <Content Include="*.fs.c" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Fable.Core/Fable.Core.fsproj" />

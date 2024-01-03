@@ -1064,13 +1064,13 @@ type Print =
     static member constructorName (c: ClassDecl) =
         Print.compiledTypeName c.Entity + "_ctor"
     static member finalizerName (c: ClassDecl) =
-        Print.compiledTypeName c.Entity + "_Finalizer"
+        Print.compiledTypeName c.Entity + "_Destructor"
     static member finalizerName (generics, fullName: string) =
-        (Print.compiledTypeName (generics, fullName)) + "_Finalizer"
+        (Print.compiledTypeName (generics, fullName)) + "_Destructor"
     static member finalizerName (generics, e: Entity) =
-        (Print.compiledTypeName (generics, e.FullName)) + "_Finalizer"
+        (Print.compiledTypeName (generics, e.FullName)) + "_Destructor"
     static member finalizerName (generics, e: EntityRef) =
-        (Print.compiledTypeName (generics, e.FullName)) + "_Finalizer"
+        (Print.compiledTypeName (generics, e.FullName)) + "_Destructor"
     static member compiledReturnType (generics: (string * Type) list, transformType: (string * Type) list -> Type -> C.Type) (com: Type.ICompiler) (m: MemberDecl) =
         if m.Name.Contains "ctor" then
             match m.MemberRef with

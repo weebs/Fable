@@ -235,7 +235,8 @@ let writeModuleHeaderFile context (projPath: string) =
         // .AppendLine("#endif")
         .AppendLine("")
     |> ignore
-    sb.AppendLine("static thread_local int __thread_context = 0;")
+    // sb.AppendLine("static thread_local int __thread_context = 0;")
+    sb.AppendLine("static int __thread_context = 0;")
     |> ignore
 
     // Write static initializer functions (module do ... expressions)

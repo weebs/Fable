@@ -54,11 +54,11 @@ let buildConstructor context generics genericParams (member_declaration: MemberD
             yield! f
             C.Statement.Emit ("// use_gc_for_address()")
             // todo: This should actually return ident, but is this ok for now?
-            C.Emit $"this$->__refcount = this$->__refcount - 1;"
+            // C.Emit $"this$->__refcount = this$->__refcount - 1;"
             // todo: This should use autorelease
             // todo: Do constructors need to use thread context?
             C.Emit "__thread_context--;"
-            C.Return (C.Expr.Emit "Runtime_autorelease(this$)")
+            C.Return (C.Expr.Emit $"Runtime_autorelease(this$, {finalizer_name})")
         ]
     }
     (id, type_sig, function_info)
@@ -66,7 +66,7 @@ let buildConstructor context generics genericParams (member_declaration: MemberD
 let buildFinalizer generics genericParams (ent: Entity) =
     let name = Print.compiledTypeName((List.map (transformType generics) genericParams), ent.FullName)
     let fields = ent.FSharpFields
-    let finalizer_id = $"{name}_Finalizer"
+    let finalizer_id = $"{name}_Destructor"
     {
         C.FunctionInfo.id = finalizer_id
         C.FunctionInfo.return_type = C.Void
@@ -126,9 +126,9 @@ let transformFunc context (name: string) (args: Ident list) (funcBody: Expr) (ge
         let body = transformMember context generics expr
         if expr.Type = Type.Unit then // || body.Length = 1 then
             [
-                C.Emit "// __thread_context++;"
+                C.Emit "__thread_context++;"
                 yield! body
-                C.Emit "// __thread_context--;"
+                C.Emit "__thread_context--;"
             ]
     //    elif body.Length = 1 then
     //        [
@@ -138,13 +138,14 @@ let transformFunc context (name: string) (args: Ident list) (funcBody: Expr) (ge
             [
                 // if requiresTracking generics expr.Type then
                 C.Emit $"{(transformType generics funcBody.Type).ToTypeString()} __toReturn;"
-                C.Emit "// __thread_context++;"
+                C.Emit "__thread_context++;"
                 if body.Length > 1 then
                     () // C.Emit "// __thread_context++;"
                 yield! loop generics body
-                C.Emit "// __thread_context--;"
+                C.Emit "__thread_context--;"
                 if requiresTracking generics expr.Type then
-                    C.Return (C.Expr.Emit "Runtime_autorelease(__toReturn)")
+                    let (C.Ptr typ) = transformType generics funcBody.Type
+                    C.Return (C.Expr.Emit $"Runtime_autorelease(__toReturn, {typ.ToNameString()}_Destructor)")
                 else
                     C.Return (C.Expr.Emit "__toReturn")
             ]
@@ -264,6 +265,12 @@ module Type =
                     let ent = com.GetEntity(classDecl.Entity)
                     // Filter out types that inherit from System.Attribute
                     if ent.BaseType |> Option.map (fun t -> t.Entity.FullName) <> Some "System.Attribute" then
+                        let finalizer = Function.buildFinalizer [] [] (com.GetEntity(classDecl.Entity))
+
+                        print.printfn $"Compiling function {finalizer.id}"
+        //                print.printfn $"{Compiler.writeFunction sb f}"
+
+                        compiledModule += (finalizer.id, C.Function finalizer)
                         let (name, type_signature, f) =
                             Function.buildConstructor context [] [] constructor ent.FullName ent.IsValueType
 
@@ -271,12 +278,6 @@ module Type =
         //                print.printfn $"{Compiler.writeFunction sb f}"
 
                         compiledModule += (name, C.Function f)
-                        let f = Function.buildFinalizer [] [] (com.GetEntity(classDecl.Entity))
-
-                        print.printfn $"Compiling function {f.id}"
-        //                print.printfn $"{Compiler.writeFunction sb f}"
-
-                        compiledModule += (f.id, C.Function f)
         //                classDeclarations += (classDecl.Entity.FullName, classDecl)
                         compiler.UpdateFile(context.currentFile, FileCompilationResults.AddClassDeclaration, classDecl)
                     match Fable.C.Helpers.database.contents.TryGetEntity(classDecl.Entity) with
