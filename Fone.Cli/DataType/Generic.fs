@@ -152,6 +152,10 @@ let generateGenericImplementations context path projHeaderName : string * Generi
                 // added_functions.Add
                 // let (id, type_sig, function_info) = Function.buildConstructor context generics genericParams classDecl.Constructor.Value ent.FullName ent.IsValueType
                 // generic_implementations.Add((type_sig, Compiler.writeFunction (SourceBuilder()) function_info))
+                // todo: Arrays of arrays
+                // todo: I think get_Item needs to use Autorelease/increment count
+                    // ex: foo[index] is used as param to function f, f calls g, value gets stored into a variable in g, and that variable goes out of scope
+                    // ex: foo[index] is used a param to function f and so is foo, then the value is removed from foo in f
                 let typeName = $"System_Array__{t.ToNameString()}"
                 let decl = $"
 typedef struct System_Array__{t.ToNameString()} {{
@@ -175,7 +179,7 @@ void {typeName}_set_Item({typeName}* this$, int index, {t.ToTypeString()} value)
     this$->data = malloc(sizeof({t.ToTypeString()}) * size);
     for (int i = 0; i < size; i++) {{
         this$->data[i] = data[i];
-        {if requiresTracking [] genericParms[0] then "this$->data[i].__refcount++;" else ""}
+        {if requiresTracking [] genericParms[0] then "this$->data[i]->__refcount++;" else ""}
     }}
     return ({typeName}*)Runtime_autorelease(this$, {typeName}_Destructor);
 }}
@@ -191,16 +195,17 @@ void {typeName}_set_Item({typeName}* this$, int index, {t.ToTypeString()} value)
 
 void {typeName}_set_Item({typeName}* this$, int index, {t.ToTypeString()} value) {{
     this$->data[index] = value;
-    {if requiresTracking [] genericParms[0] then "this$->data[index].__refcount++;" else ""}
+    {if requiresTracking [] genericParms[0] then "this$->data[index]->__refcount++;" else ""}
 }}
 
 {t.ToTypeString ()} {typeName}_get_Item({typeName}* this$, int index) {{ return this$->data[index]; }}
 void {typeName}_Destructor({typeName}* this$) {{
     {
         if (requiresTracking [] genericParms[0]) then
+            let (C.AST.C.Ptr t) = t
             $"
         for (int i = 0; i < this$->length; i++) {{
-            Runtime_end_var_scope(this$->data[i], {t.ToTypeString ()}_Destructor);
+            Runtime_end_var_scope(this$->data[i], {t.ToNameString ()}_Destructor);
         }}
             "
         else
@@ -299,7 +304,7 @@ void {typeName}_Destructor({typeName}* this$) {{
                         if not (added_functions.Contains(finalizer_id)) then
                             added_functions.Add(finalizer_id)
                             let finalizer_implementation = Function.buildFinalizer generics genericParams ent
-                            generic_implementations.Add(($"void {name}_Finalizer(struct {name}* this$);"), (Compiler.writeFunction (SourceBuilder()) finalizer_implementation))
+                            generic_implementations.Add(($"void {finalizer_id}(struct {name}* this$);"), (Compiler.writeFunction (SourceBuilder()) finalizer_implementation))
                     if classDecl.Constructor.IsSome then
                         let generic_instantiations =
                             fields
@@ -417,7 +422,7 @@ void {typeName}_Destructor({typeName}* this$) {{
                                 if not (added_functions.Contains(finalizer_id)) then
                                     added_functions.Add(finalizer_id)
                                     let finalizer_implementation = Function.buildFinalizer generics genericParams ent
-                                    generic_implementations.Add(($"void {typeName}_Finalizer({typeName} this$);"), (Compiler.writeFunction (SourceBuilder()) finalizer_implementation))
+                                    generic_implementations.Add(($"void {typeName}_Destructor({typeName} this$);"), (Compiler.writeFunction (SourceBuilder()) finalizer_implementation))
                         else
                             // todo WHAT THE FUCK D: <
                             ()
