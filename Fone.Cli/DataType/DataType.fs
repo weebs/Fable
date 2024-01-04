@@ -32,12 +32,12 @@ let writeStruct (ent: Entity) (struct_name: string, compiledFields: (string * C.
         _sb.AppendLine $"}} {struct_name};"
         |> ignore
         match ent.IsValueType with
-        | true -> 
+        | true ->
             // _sb.AppendLine $"struct {struct_name} {struct_name}_ctor();" |> ignore
             _sb.AppendLine $"{struct_name} {struct_name}_ctor();" |> ignore
         | false ->
             print.printfn $"{ent.FullName}: {if ent.BaseType.IsSome then ent.BaseType.Value.Entity.FullName else string '\n'}"
             // _sb.AppendLine $"struct {struct_name}* {struct_name}_ctor();" |> ignore
             _sb.AppendLine $"{struct_name}* {struct_name}_ctor();" |> ignore
-            _sb.AppendLine $"void {struct_name}_Finalizer({struct_name}* this$);" |> ignore
+            _sb.AppendLine $"void {struct_name}_Destructor({struct_name}* this$);" |> ignore
         _sb.ToString()

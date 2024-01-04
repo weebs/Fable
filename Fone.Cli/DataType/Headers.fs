@@ -92,7 +92,7 @@ typedef struct {fullName} {{
 // }} {fullName};
 //                    cases |> List.iter (fun (name, fields) -> writeStruct ent name fields)
                     let finalizer = $"""
-void {fullName}_Finalizer({fullName}* this$) {{
+void {fullName}_Destructor({fullName}* this$) {{
     // todo
 }}
 """
@@ -103,7 +103,7 @@ void {fullName}_Finalizer({fullName}* this$) {{
                 writeUnion ent
                 //sb.AppendLine $"%A{ent}" |> ignore
             else
-                let struct_name = 
+                let struct_name =
                     Print.compiledTypeName c.Entity
                 let fields = compiler.GetEntity(c.Entity.FullName).FSharpFields
                 let compiledFields =
