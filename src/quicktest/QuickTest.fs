@@ -10,6 +10,7 @@ open System.Collections.Generic
 open Fable.Core
 open Fable.Core.JsInterop
 open Fable.Core.Testing
+open QuickTest.Generics
 
 // let log (o: obj) = JS.console.log (o)
 // // printfn "%A" o
@@ -96,22 +97,6 @@ open Fable.Core.Testing
 //    console.log("Ms:", elapsed[0] * 1e3 + elapsed[1] / 1e6);
 //    //!js
 // """
-type Vec<'t>() =
-    let mutable items = [| Unchecked.defaultof<_> |]
-    let mutable n = 0
-    let mutable size = 1
-
-    member this.Add(item) =
-        if n >= size then
-            let oldItems = items
-            size <- size * 2
-            items <- Array.zeroCreate (size * 2)
-
-            for i in 0 .. n - 1 do
-                items[i] <- oldItems[i]
-
-        items[n] <- item
-        n <- n + 1
 
 type Count() =
     let mutable count = 0
@@ -167,6 +152,8 @@ let array () =
             3
             4
         |]
+
+    let moreItems = [| Count(); Count() |]
 
     printfn $"items = {items}"
     // let otherItems = Array.create 10 ""

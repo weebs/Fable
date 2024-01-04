@@ -6,6 +6,7 @@
     <LangVersion>Preview</LangVersion>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Generics.fs" />
     <Compile Include="QuickTest.fs" />
     <Content Include="quicktest.fs.js" />
     <Content Include="*.fs.h" />
