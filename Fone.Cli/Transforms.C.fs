@@ -627,6 +627,11 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
         | "FreeHGlobal", "System.Runtime.InteropServices.Marshal.c" ->
             C.Call ("free", callInfo.Args |> List.map (transformExpr ctx generics))
             // C.Expr.Emit $"%A{callee}"
+        | "fill", "Array.c" ->
+            let t = transformType generics expr.Type.Generics[0]
+            let tName = t.ToNameString()
+            let sizeExpr = transformExpr ctx generics callInfo.Args[2]
+            C.Call ($"System_Array__{tName}_alloc", [ sizeExpr ])
         // TODO : replace this earlier
         | "FSharpRef", "Types.c" ->
             match callInfo.Args.[0] with
