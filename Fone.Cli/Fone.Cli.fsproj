@@ -3,6 +3,7 @@
     <PropertyGroup>
         <OutputType>Exe</OutputType>
         <TargetFramework>net8.0</TargetFramework>
+        <NoWarn>FS1182</NoWarn>
     </PropertyGroup>
 
     <ItemGroup>
