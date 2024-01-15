@@ -387,7 +387,8 @@ let rec _writeStmt (statement: C.Statement) : SourceBuilder =
                     | C.Expression expr ->
                         C.Block ((statements |> List.take (statements.Length - 1)) @ [
                             C.Emit $"{decl.name} = {_writeExpr expr};\n"
-                            C.Emit $"{decl.name}->__refcount++;\n"
+                            if decl.requiresTracking then
+                                C.Emit $"{decl.name}->__refcount++;\n"
                         ])
                     | C.Conditional (guard, ifTrue, ifFalse) ->
                         // todo: nested if => recursion
