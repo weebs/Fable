@@ -196,7 +196,7 @@ void Runtime_reassign_field(void** location, void* value, void* destructor) {
                 let c_file = Fable.C.File.transformFile com transformedFile
                 Fable.C.File.writeFile filePath c_file.includes c_file.compiledModule c_file.static_constructor
         |]
-        let header = Fable.C.Writer.writeModuleHeaderFile { currentFile = "" } "/build/project.json"
+        let header = Fable.C.Writer.writeModuleHeaderFile { currentFile = ""; idents = [] } "/build/project.json"
         let files = io.files
         let generics = files |> Seq.find (fun kv -> kv.Key.Contains ".generics.")
         let output = compiledFiles |> String.concat "\n"
