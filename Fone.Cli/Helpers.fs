@@ -347,6 +347,9 @@ module Query =
 ////            let acc_idents = idents
 ////            false
 //        | _ -> false
+    let isClosure (idents: string list) (expr: Expr) =
+        let isCapture e = match e with | Fable.IdentExpr i when (List.contains i.Name idents) -> true | _ -> false
+        Fable.Transforms.AST.deepExists isCapture expr
     let isEmptyDelegate (idents: Ident list) (body: Expr) =
         match body with
         | Call(callee, callInfo, ``type``, sourceLocationOption) ->

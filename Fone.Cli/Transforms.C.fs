@@ -1291,6 +1291,7 @@ let rec requiresTracking generics t =
         false
 let transformLet ctx generics (ident: Ident) value (body: Expr) =
     if Seq.contains ident.Name identsToWatch then ()
+    let ctx = { ctx with idents = ident.Name :: ctx.idents }
     // printfn $"{Print.printObj 0 ident}"
     // printfn $"{Print.printExpr 0 value}"
     let c_value =
@@ -1321,7 +1322,19 @@ let transformLet ctx generics (ident: Ident) value (body: Expr) =
                     // todo: emit anonymous_fn
                     C.ExprAssignment (Print.emitComment (Let (ident, value, body)))
                 | Lambda(ident, body, stringOption) ->
-                    C.ExprAssignment (Print.emitComment value)
+                    let args, body = unwrapLambda ident body
+                    // todo; is closure
+                    // let isClosure = Fable.Transforms.Rust.Fable2Rust.Util.hasCapturedIdents
+                    // todo: fails for lambdas that use recursion
+                    // List.tail ctx.idents is used since the most recent binding will be the lambda itself
+                    if not (Query.isClosure (List.tail ctx.idents) body) then
+                    // if Query.isEmptyDelegate args body then
+                        let name = getAnonymousFunctionName ctx.currentFile value
+                        C.ExprAssignment <| C.Expr.Emit name
+                    else
+                        // todo
+                        let name = getAnonymousFunctionName ctx.currentFile value
+                        C.ExprAssignment <| C.Expr.Emit name
                 | _ ->
                     // todo declare everything before
                     // For more complex assignment, we have to declare the type and then initialize it in a code block

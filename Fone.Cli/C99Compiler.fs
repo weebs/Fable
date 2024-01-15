@@ -10,7 +10,10 @@ open Fable.AST
 open Fable.AST.Fable
 
 // type Compiler = ICompiler
-type Context = { currentFile: string }
+type Context = {
+    currentFile: string
+    idents: string list
+}
 
 type FileCompilationResults = {
     classDeclarations: Map<string, ClassDecl>

@@ -126,7 +126,7 @@ let transformFile (_com: Fable.Compiler) (file: File) =
     // database.contents <- _com
     print.printfn $"Database: %A{database.contents}"
     compiler.UpdateFile(_com.CurrentFile, FileCompilationResults.Empty, ())
-    let context = { currentFile = _com.CurrentFile }
+    let context = { currentFile = _com.CurrentFile; idents = [] }
     do
         let dir = IO.Path.GetDirectoryName(_com.CurrentFile)
         let filename = IO.Path.GetFileName(_com.CurrentFile)
