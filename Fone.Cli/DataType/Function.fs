@@ -143,9 +143,13 @@ let transformFunc context (name: string) (args: Ident list) (funcBody: Expr) (ge
                     () // C.Emit "// __thread_context++;"
                 yield! loop generics body
                 C.Emit "__thread_context--;"
+                C.Emit "Runtime_clear_pool();"
                 if requiresTracking generics expr.Type then
-                    let (C.Ptr typ) = transformType generics funcBody.Type
-                    C.Return (C.Expr.Emit $"Runtime_autorelease(__toReturn, {typ.ToNameString()}_Destructor)")
+                    match transformType generics funcBody.Type with
+                    | C.Ptr typ ->
+                        C.Return (C.Expr.Emit $"Runtime_autorelease(__toReturn, {typ.ToNameString()}_Destructor)")
+                    | _else ->
+                        ()
                 else
                     C.Return (C.Expr.Emit "__toReturn")
             ]
