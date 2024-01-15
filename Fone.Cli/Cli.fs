@@ -44,26 +44,39 @@ void Runtime_pool_track (void* addr, void* f) {
 }
 
 void Runtime_clear_pool() {
+    int free_count = 0;
     for (int i = 0; i < pool.n; i++) {
         ref r = pool.data[i];
-        printf("Checking address %p\n", r.data);
-        unsigned char* p = r.data;
-        *p = *p - 1;
-        unsigned char count = *(unsigned char*)r.data;
-        if (count <= 0 && r.context > __thread_context) {
+        if (r.data == 0) {
+            free_count++;
+            continue;
+        }
+        //printf("Checking address %p\n", r.data);
+        if (r.context > __thread_context) {
+            unsigned char* p = r.data;
+            *p = *p - 1;
+            pool.data[i].data = 0;
+        }
+        unsigned char count = *(unsigned char *)r.data;
+        if (count <= 0) {
             void (*f)(void*) = r.f;
-            printf("Autorelease freeing %p\n", r.data);
+            //printf("Autorelease freeing %p\n", r.data);
             f(r.data);
+            free_count++;
+            pool.data[i].data = 0;
         }
     }
-    pool.size = 0;
-    pool.n = 0;
-    free(pool.data);
-    pool.data = 0;
+    // todo: Only free when pool is empty
+    if (free_count == pool.n) {
+        pool.size = 0;
+        pool.n = 0;
+        free(pool.data);
+        pool.data = 0;
+    }
 }
 
 void* Runtime_autorelease(void* ptr, void* destructor) {
-    printf("Autorelease %p\n", ptr);
+    //printf("Autorelease %p\n", ptr);
     unsigned char* p = ptr;
     *p = *p - 1;
     //void (*f)(void*) = destructor;
@@ -79,7 +92,7 @@ void Runtime_end_var_scope(void* ptr, void* destructor) {
     void (*f)(void*) = destructor;
     *p = *p - 1;
     if (*p <= 0) {{
-        printf("Freeing %p\n", ptr);
+        //printf("Freeing %p\n", ptr);
         f(ptr);
     }}
 }
