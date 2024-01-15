@@ -654,9 +654,19 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
         | "ToNativeIntInlined", "Microsoft.FSharp.NativeInterop.NativePtrModule.c" ->
             C.Expr.TypeCast (C.Ptr C.Void, (transformExpr ctx generics callInfo.Args.[0]))
         | "defaultOf", "Util.c" ->
-            match ``type`` with
-            | Any -> C.Expr.Emit "(void*)0"
-            | _ -> C.Expr.Emit $"(void*0) /* Unchecked.defaultOf<%A{``type``}> */" //C.Value (C.ValueKind.Void)
+            // match expr.Type with
+            // | Fable.Number _ -> C.Expr.Value (C.ValueKind.Int 0)
+            // | _ ->
+                // C.Expr.Emit $"(void*0) /* Unchecked.defaultOf<%A{``type``}> */" //C.Value (C.ValueKind.Void)
+            let t = transformType generics expr.Type
+            match t with
+            | C.Float | C.Double
+            | C.Int -> C.Expr.Value (C.ValueKind.Int 0)
+            | _ ->
+                C.Expr.Emit $"(void*)0 /* Unchecked.defaultOf<%A{t}> */" //C.Value (C.ValueKind.Void)
+            // match ``type`` with
+            // | Any -> C.Expr.Emit "(void*)0"
+            // | _ -> C.Expr.Emit $"(void*0) /* Unchecked.defaultOf<%A{``type``}> */" //C.Value (C.ValueKind.Void)
         | "equals", "Util.c" -> C.Binary (C.BinaryOp.Eq, transformExpr ctx generics callInfo.Args.[0], transformExpr ctx generics callInfo.Args.[1])
 //                C.Expr.Emit $"(void*) /* %A{expr} */"
         | "AllocHGlobal", "System.Runtime.InteropServices.c" -> C.Call ("malloc", callInfo.Args |> List.map (transformExpr ctx generics))
