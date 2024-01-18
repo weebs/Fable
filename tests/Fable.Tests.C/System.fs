@@ -15,6 +15,8 @@ module Collections_Generic =
         let mutable items: 't[] = Array.zeroCreate 0
         member this.Add(item: 't) =
             printfn $"{item}"
+        member this.Item
+            with get index = items[index]
     type Dictionary<'key, 'value when 'key: equality>() =
         // let items: 'value[] = Array.zeroCreate 0
         let buckets: ('key * 'value)[][] = Array.zeroCreate 8
