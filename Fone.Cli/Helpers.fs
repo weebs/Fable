@@ -195,6 +195,20 @@ let resolveType (generics: (string * Type) list) (t: Type) =
         match generics |> List.tryFind (fun (paramName, _) -> name = paramName) with
         | Some (_, t) -> t
         | _ -> t
+    | Array(genericArg, arrayKind) ->
+        Array(resolveType generics genericArg, arrayKind)
+    | Tuple(genericArgs, isStruct) ->
+        Tuple(genericArgs |> List.map (resolveType generics), isStruct)
+    | List genericArg -> List (resolveType generics genericArg)
+    | Option (t, s) -> Option (resolveType generics t, s)
+    | LambdaType (arg, _return) ->
+        LambdaType(resolveType generics arg, resolveType generics _return)
+    | DelegateType (args, _return) ->
+        DelegateType(args |> List.map (resolveType generics), resolveType generics _return)
+    | DeclaredType(entityRef, genericArgs) ->
+        DeclaredType(entityRef, genericArgs |> List.map (resolveType generics))
+    | AnonymousRecordType(fieldNames, genericArgs, isStruct) ->
+        AnonymousRecordType(fieldNames, genericArgs |> List.map (resolveType generics), isStruct)
     | _ -> t
 let tryResolveType (generics: (string * Type) list) (t: Type) : Type option =
     match t with
