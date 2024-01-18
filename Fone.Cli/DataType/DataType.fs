@@ -16,8 +16,10 @@ let writeStruct (ent: Entity) (struct_name: string, compiledFields: (string * C.
         let _sb = StringBuilder()
         _sb
             .AppendLine($"typedef struct {struct_name} {{")
-            .AppendLine("    unsigned char __refcount;")
         |> ignore
+        if not (ent.IsValueType) && not (ent.IsFSharpUnion) then
+            _sb.AppendLine("    unsigned char __refcount;")
+            |> ignore
         for fieldName, fieldType in compiledFields do
             match fieldType with
             | C.Ptr (C.UserDefined (fullName, isValueType, entityRef))
