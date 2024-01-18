@@ -184,7 +184,14 @@ let rec transformType (generics: (string * Type) list) (t: Fable.Type) =
 //            C.UserDefined ("System_Array__char", false, None)
         | Fable.Type.Array(genericArg, arrayKind) ->
             // C.Ptr (C.UserDefined ($"System_GcArray__{(loop (depth + 1) generics genericArg).ToNameString()}", false, None))
-            C.Ptr (C.UserDefined ($"System_Array__{(loop (depth + 1) generics genericArg).ToNameString()}", false, None))
+            let t =
+                loop (depth + 1) generics genericArg
+            match arrayKind with
+            | ResizeArray ->
+                C.Ptr (C.UserDefined ($"System_Collections_Generic_List__{t.ToNameString()}", false, None))
+            | MutableArray ->
+                C.Ptr (C.UserDefined ($"System_Array__{t.ToNameString()}", false, None))
+            | ImmutableArray -> failwith "todo"
     //        C.Ptr (C.EmitType $"System_Array__{(transformType generics genericArg).ToNameString()}")
     //        C.Ptr (transformType generics genericArg)
         | Fable.Type.DelegateType(argTypes, returnType) ->
@@ -880,8 +887,17 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
             | ExprGet getExpr ->
                 match expr.Type with
                 | Array(genericArg, arrayKind) ->
-                    C.Call($"System_Array__{(transformType generics genericArg).ToNameString()}_get_Item", [
-                        transformExpr ctx generics expr
+                    let t = (transformType generics genericArg)
+                    let genericParamName = t.ToNameString()
+                    let name =
+                        match arrayKind with
+                        | ResizeArray ->
+                            $"System_Collections_Generic_List__{genericParamName}_get_Item"
+                        | MutableArray ->
+                            $"System_Array__{genericParamName}_get_Item"
+                        | ImmutableArray -> failwith "todo"
+                    C.Call(name, [
+                        transformExpr ctx generics e
                         transformExpr ctx generics getExpr
                     ])
                 | _ ->
