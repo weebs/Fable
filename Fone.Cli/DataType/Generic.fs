@@ -469,8 +469,58 @@ void {typeName}_Destructor({typeName}* this$) {{
     for tuple in tuples do
         let tplName = tupleName [] tuple
         declarations.AppendLine $"typedef struct {tplName} {{" |> ignore
+        // todo: Only add __refcount for non-struct tuples
+        declarations.AppendLine "    unsigned char __refcount;" |> ignore
         tuple |> List.iteri (fun index t -> declarations.AppendLine $"    {(transformType [] t).ToTypeString()} value_{index};" |> ignore)
         declarations.AppendLine $"}} {tplName};" |> ignore
+        let calls = [|
+            for i in 0..tuple.Length - 1 do
+                let t = tuple[i]
+                if requiresTracking [] t then
+                    let c_type = transformType [] t
+                    let c_type = c_type.ToNameString()
+                    let c_type = c_type.Substring(0, c_type.Length - 3)
+                    $"    Runtime_end_var_scope(this$->value_{i}, {c_type}_Destructor);"
+        |]
+        let calls = calls |> String.concat "\n"
+        let impl =
+            $"void {tplName}_Destructor({tplName}* this$) {{
+{calls}
+    free(this$);
+}}"
+        let typeDecl = $"void {tplName}_Destructor({tplName}* this$);"
+        declarations.AppendLine typeDecl |> ignore
+        let values =
+            tuple
+            |> List.map (transformType [])
+            |> List.map _.ToTypeString()
+        let namedValues =
+            values
+            |> List.mapi (fun index name -> name + " value_" + string index)
+        let declArgs = values |> String.concat ", "
+        let ctor_calls =
+            [|
+                for i in 0..tuple.Length - 1 do
+                    let t = tuple[i]
+                    let c_type = transformType [] t
+                    $"this$->value_{i} = value_{i};"
+                    if requiresTracking [] t then
+                        let c_type = c_type.ToNameString()
+                        let c_type = c_type.Substring(0, c_type.Length - 3)
+                        $"this$->value_{i}->__refcount++;"
+            |]
+            |> String.concat "\n    "
+        let implArgs = namedValues |> String.concat ", "
+        declarations.AppendLine $"struct {tplName}* {tplName}_ctor({declArgs});" |> ignore
+        let ctor_impl = $"
+struct {tplName}* {tplName}_ctor({implArgs}) {{
+    struct {tplName}* this$ = malloc(sizeof(struct {tplName}));
+    this$->__refcount = 1;
+    {ctor_calls}
+    return Runtime_autorelease(this$, {tplName}_Destructor);
+}}"
+        generic_implementations.Add ("", ctor_impl)
+        generic_implementations.Add ("", impl)
     // Trying to sort by the name of ValueOption instances to help with declaration order
     for option in (valueOptions |> Seq.sortBy (fun o -> (transformType [] o).ToTypeString().Split("ValueOption").Length)) do
         let typeName = (transformType [] option).ToNameString()
