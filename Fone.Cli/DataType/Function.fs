@@ -39,7 +39,7 @@ let buildConstructor context generics genericParams (member_declaration: MemberD
                     if isValueType then
                         C.Default
                     else
-                        C.ExprAssignment <| C.TypeCast (C.EmitType $"{typeName}*", (C.Expr.Emit $"malloc(sizeof({typeName}))"))
+                        C.ExprAssignment <| C.TypeCast (C.EmitType $"{typeName}*", (C.Expr.Emit $"calloc(1, sizeof({typeName}))"))
                 _type = return_type
                 requiresTracking = false
             }
