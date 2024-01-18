@@ -564,15 +564,15 @@ type GenericInteraction =
     | ValueOption of genericParam: Type
 let inline duInfo (o: 't) =
     FSharp.Reflection.FSharpValue.GetUnionFields (o, o.GetType())
-let pullGenericTypeUsages (com: Type.ICompiler) (t: Type) : GenericInteraction list =
+let pullGenericTypeUsages generics (com: Type.ICompiler) (t: Type) : GenericInteraction list =
     match t with
     | Array(genericArg, arrayKind) ->
-        [ (GenericInteraction.Instantiation ("System.Array`1", [ genericArg ])) ]
+        [ (GenericInteraction.Instantiation ("System.Array`1", [ resolveType generics genericArg ])) ]
     | DeclaredType(entityRef, genericArgs) when genericArgs.Length > 0 && not (entityRef.FullName.StartsWith "Microsoft.FSharp.Core.PrintfFormat") ->
         // todo: probably add the constructor
         [ (GenericInteraction.Instantiation (entityRef.FullName, genericArgs)) ]
     | Tuple(genericArgs, isStruct) ->
-        [ Tupl (genericArgs, isStruct) ]
+        [ Tupl (genericArgs |> List.map (resolveType generics), isStruct) ]
     | Option(genericArg, isStruct) ->
         [ ValueOption genericArg ]
     | _ -> []
@@ -616,7 +616,7 @@ let database: Type.ICompiler ref = ref Unchecked.defaultof<_>
 
 let findGenerics (com: Type.ICompiler) (compiler: MyCompiler) generics expr : (GenericInteraction * Expr) list list =
     walkExpr (fun expr ->
-        let fromType = pullGenericTypeUsages com expr.Type |> List.map (fun a -> a, Unchecked.defaultof<_>)
+        let fromType = pullGenericTypeUsages generics com expr.Type |> List.map (fun a -> a, Unchecked.defaultof<_>)
         let fromBody =
             match expr with
             | Call(IdentExpr ident, info, typ, range)
@@ -687,10 +687,10 @@ let findGenerics (com: Type.ICompiler) (compiler: MyCompiler) generics expr : (G
             | Let(ident, value, body) ->
                 let isGenericValue = Query.isUnresolvedGenericType value.Type
                 //let body = (findGenericInstantiations depth value) @ (findGenericInstantiations (depth + 1) body)
-                let identGenerics = pullGenericTypeUsages com ident.Type |> List.map (fun t -> t, expr)
+                let identGenerics = pullGenericTypeUsages generics com ident.Type |> List.map (fun t -> t, expr)
                 let valueGenerics =
                     if isGenericValue then
-                        pullGenericTypeUsages com value.Type |> List.map (fun t -> t, expr)
+                        pullGenericTypeUsages generics com value.Type |> List.map (fun t -> t, expr)
                     else
                         []
                 identGenerics @ valueGenerics
