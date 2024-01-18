@@ -80,8 +80,10 @@ typedef union {fullName}_UnionData {{
     {System.String.Join("\n    ", fieldNames)}
 }} {fullName}_UnionData;
 typedef struct {fullName} {{
+    unsigned char __refcount;
     int union_tag;
-    union {fullName}_UnionData union_data; }} {fullName};
+    union {fullName}_UnionData union_data;
+}} {fullName};
 """
 // typedef union {fullName}_UnionData {{
 //     {System.String.Join("\n    ", fieldNames)}
@@ -91,15 +93,33 @@ typedef struct {fullName} {{
 //     union {fullName}_UnionData union_data;
 // }} {fullName};
 //                    cases |> List.iter (fun (name, fields) -> writeStruct ent name fields)
-                    let finalizer = $"""
-void {fullName}_Destructor({fullName}* this$) {{
-    // todo
-}}
-"""
                     cases |> List.iter (sb.AppendLine >> ignore)
                     sb.AppendLine union |> ignore
-                    // sb.AppendLine finalizer
-                    // |> ignore
+                    if not ent.IsValueType then
+                        let cleanup = [|
+                            for tag in 0..ent.UnionCases.Length - 1 do
+                                let case = ent.UnionCases[tag]
+                                let toCall = [|
+                                    for field in case.UnionCaseFields do
+                                        if requiresTracking [] field.FieldType then
+                                            let t = transformType [] field.FieldType
+                                            let name =
+                                                match t with
+                                                | C.Ptr t -> t.ToNameString()
+                                                | t -> t.ToNameString()
+                                            $"    Runtime_end_var_scope(this$->union_data.{case.Name}.{field.Name}, {name}_Destructor);"
+                                |]
+                                if toCall.Length > 0 then
+                                    $"if ({tag} == this$->union_tag) {{\n" +
+                                    System.String.Join("\n    else ", toCall) + "\n    }"
+                        |]
+                        let finalizer = $"""
+void {fullName}_Destructor({fullName}* this$) {{
+    {cleanup |> String.concat "\n"}
+    free(this$);
+}}"""
+                        sb.AppendLine finalizer
+                        |> ignore
                 writeUnion ent
                 //sb.AppendLine $"%A{ent}" |> ignore
             else
