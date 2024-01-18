@@ -1644,9 +1644,9 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
                         let _member = (accessType ((transformExpr ctx generics expr), fieldName))
                         let (C.Ptr valueType) = transformType generics value.Type
                         // todo: reassign
-                        // [ C.Emit $"Runtime_reassign_field((void**)&{Compiler.writeExpression _member}, {Compiler.writeExpression e});" ]
+                        // [ C.Emit $"Runtime_swap_value((void**)&{Compiler.writeExpression _member}, {Compiler.writeExpression e});" ]
                         [
-                            C.Emit $"Runtime_reassign_field((void**)&{Compiler.writeExpression _member}, {Compiler.writeExpression e}, {valueType.ToNameString()}_Destructor);"
+                            C.Emit $"Runtime_swap_value((void**)&{Compiler.writeExpression _member}, {Compiler.writeExpression e}, {valueType.ToNameString()}_Destructor);"
                             // C.Assignment ((accessType ((transformExpr ctx generics expr), fieldName)), transformExpr ctx generics value)
                         ]
                     else

@@ -14,6 +14,7 @@ typedef struct ref {
     void* data;
     int context;
     void* f;
+    bool checked;
 } ref;
 typedef struct Runtime_pool {
     int size;
@@ -37,7 +38,7 @@ void Runtime_pool_track (void* addr, void* f) {
         }
         free(copy);
     }
-    ref value = { .data = addr, .context = __thread_context + 1, .f = f };
+    ref value = { .data = addr, .context = __thread_context + 1, .f = f, .checked = false };
     pool.data[pool.n] = value;
     //pool.context_data[pool.n] = __thread_context;
     pool.n++;
@@ -47,15 +48,15 @@ void Runtime_clear_pool() {
     int free_count = 0;
     for (int i = 0; i < pool.n; i++) {
         ref r = pool.data[i];
-        if (r.data == 0) {
+        if (r.checked || r.data == 0) {
             free_count++;
             continue;
         }
         //printf("Checking address %p\n", r.data);
-        if (r.context > __thread_context) {
+        if (r.checked == false && r.context > __thread_context) {
             unsigned char* p = r.data;
             *p = *p - 1;
-            pool.data[i].data = 0;
+            pool.data[i].checked = true;
         }
         unsigned char count = *(unsigned char *)r.data;
         if (count <= 0) {
@@ -96,13 +97,14 @@ void Runtime_end_var_scope(void* ptr, void* destructor) {
         f(ptr);
     }}
 }
-void Runtime_reassign_field(void** location, void* value, void* destructor) {
+void Runtime_swap_value(void** location, void* value, void* destructor) {
     if (*location == value) { return; }
     unsigned char* p = value;
     *p = *p + 1;
     void* oldValue = *location;
     *location = value;
-    Runtime_end_var_scope(oldValue, destructor);
+    if (oldValue != NULL)
+        Runtime_end_var_scope(oldValue, destructor);
 }
 """
     let options: Fable.CompilerOptions = {
