@@ -80,13 +80,17 @@ let buildFinalizer generics genericParams (ent: Entity) =
                     match database.contents.TryGetEntity(entityRef) with
                     | Some e ->
                         if not (e.IsValueType) then
-                            let c_generics = genericArgs |> List.map (transformType generics)
-                            C.Emit $"{Print.finalizerName (c_generics, e)}(this$->{field.Name});"
+                            // let c_generics = genericArgs |> List.map (transformType generics)
+                            // C.Emit $"{Print.finalizerName (c_generics, e)}(this$->{field.Name});"
+                            let fieldTypeName = transformType generics field.FieldType |> _.ToNameString()
+                            C.Emit $"Runtime_end_var_scope(this$->{field.Name}, {fieldTypeName}_Destructor);"
                     | None when entityRef.FullName = "nativeptr`1" -> ()
                     | _ -> ()
 //                            C.Emit $"free(this$->{field.Name});"
                 | Array(genericArg, arrayKind) ->
-                    C.Emit $"free(this$->{field.Name});"
+                    let fieldTypeName = transformType generics genericArg |> _.ToNameString()
+                    C.Emit $"Runtime_end_var_scope(this$->{field.Name}, System_Array__{fieldTypeName}_Destructor);"
+                    // C.Emit $"free(this$->{field.Name});"
                 | _ -> ()
             C.Emit "free(this$);"
         ]
