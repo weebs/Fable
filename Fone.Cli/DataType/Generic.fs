@@ -188,7 +188,7 @@ void {typeName}_set_Item({typeName}* this$, int index, {t.ToTypeString()} value)
     {typeName}* this$ = malloc(sizeof({typeName}));
     this$->__refcount = 1;
     this$->length = size;
-    this$->data = malloc(sizeof({t.ToTypeString()}) * size);
+    this$->data = calloc(size, sizeof({t.ToTypeString()}));
     // TODO: initialize values
     return ({typeName}*)Runtime_autorelease(this$, {typeName}_Destructor);
 }}
