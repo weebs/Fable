@@ -133,6 +133,7 @@ let transformFunc context (name: string) (args: Ident list) (funcBody: Expr) (ge
                 C.Emit "__thread_context++;"
                 yield! body
                 C.Emit "__thread_context--;"
+                C.Emit "Runtime_clear_pool();"
             ]
     //    elif body.Length = 1 then
     //        [
