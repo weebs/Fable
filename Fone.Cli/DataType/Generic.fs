@@ -194,11 +194,32 @@ void {typeName}_set_Item({typeName}* this$, int index, {t.ToTypeString()} value)
 }}
 
 void {typeName}_set_Item({typeName}* this$, int index, {t.ToTypeString()} value) {{
-    this$->data[index] = value;
-    {if requiresTracking [] genericParms[0] then "this$->data[index]->__refcount++;" else ""}
+    if (index > this$->length) {{
+        exit(1);
+    }}
+    if (index < 0) {{
+        exit(index);
+    }}
+    {
+        if requiresTracking [] genericParms[0] then
+            let name = t.ToNameString()
+            let tName = name.Substring(0, name.Length - 3)
+            let destructor = tName + "_Destructor"
+            $"Runtime_swap_value((void*)(this$->data + index), value, " + destructor + ");"
+        else
+            "this$->data[index] = value;"
+    }
 }}
 
-{t.ToTypeString ()} {typeName}_get_Item({typeName}* this$, int index) {{ return this$->data[index]; }}
+{t.ToTypeString ()} {typeName}_get_Item({typeName}* this$, int index) {{
+    if (index > this$->length) {{
+        exit(1);
+    }}
+    if (index < 0) {{
+        exit(index);
+    }}
+    return this$->data[index];
+}}
 void {typeName}_Destructor({typeName}* this$) {{
     {
         if (requiresTracking [] genericParms[0]) then
