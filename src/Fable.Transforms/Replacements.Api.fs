@@ -6,6 +6,7 @@ open Fable
 open Fable.AST
 open Fable.AST.Fable
 open Fable.Transforms
+open Fable.Transforms.Replacements.Util
 
 type ICompiler = FSharp2Fable.IFableCompiler
 
@@ -73,6 +74,23 @@ let tryCall (com: ICompiler) ctx r t info thisArg args =
     | Rust -> Rust.Replacements.tryCall com ctx r t info thisArg args
     | Python -> Py.Replacements.tryCall com ctx r t info thisArg args
     | Dart -> Dart.Replacements.tryCall com ctx r t info thisArg args
+    | Plugin ->
+        let ptrModule = "Microsoft.FSharp.NativeInterop.NativePtrModule"
+        match info.CompiledName, info.DeclaringEntityFullName with
+        | ".ctor", "System.Collections.Generic.Dictionary`2" -> None
+        | "get_Item", "System.Collections.Generic.Dictionary`2" -> None
+        | ".ctor", "System.Collections.Generic.List`1" -> None
+        | "Add", "System.Collections.Generic.List`1" -> None
+        | "ToInt", "Microsoft.FSharp.Core.Operators" ->
+            Some (TypeCast (args[0], t))
+        | "GetPointerInlined", _mod when _mod = ptrModule ->
+            Helper.LibCall(com, ptrModule, "GetPointerInlined", t, args, ?loc=r)
+            |> Some
+        | "OfNativeIntInlined", _mod when _mod = ptrModule ->
+            Helper.LibCall(com, ptrModule, "OfNativeIntInlined", t, args, ?loc=r)
+            |> Some
+        | _ ->
+            JS.Replacements.tryCall com ctx r t info thisArg args
     | _ -> JS.Replacements.tryCall com ctx r t info thisArg args
 
 let error (com: ICompiler) msg =

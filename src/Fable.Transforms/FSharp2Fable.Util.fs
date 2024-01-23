@@ -2933,7 +2933,18 @@ module Util =
                 | Some e -> Some e
                 | None when info.IsInterface ->
                     callAttachedMember com r typ callInfo ent memb |> Some
-                | None -> failReplace com ctx r info callInfo.ThisArg |> Some
+                | None ->
+                    let ident = Fable.IdentExpr {
+                        Name = memb.FullName
+                        Type = Fable.Unit // todo: create right type
+                        IsMutable = false
+                        IsThisArgument = false
+                        IsCompilerGenerated = false
+                        Range = None
+                    }
+                    let call = Some (Fable.Call (ident, callInfo, typ, r))
+                    // failReplace com ctx r info callInfo.ThisArg |> Some
+                    call
         | _ -> None
 
     let addWatchDependencyFromMember
