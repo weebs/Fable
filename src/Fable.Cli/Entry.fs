@@ -552,6 +552,7 @@ let getStatus =
     | Python -> "beta"
     | Rust -> "alpha"
     | Dart -> "beta"
+    | Plugin
     | Php -> "experimental"
 
 let getLibPkgVersion =
@@ -561,8 +562,10 @@ let getLibPkgVersion =
     | Python
     | Rust
     | Dart
+    | Plugin
     | Php -> None
 
+[<EntryPoint>]
 let main (argv: string[]) =
     result {
         let! argv, runProc =
@@ -694,11 +697,3 @@ let main (argv: string[]) =
         | Error msg ->
             Log.error msg
             1
-
-[<EntryPoint>]
-let fone argv =
-    Api.Compiler.compileSingleFile
-        "C:/Users/Dave/projects/Fable/src/quicktest/QuickTest.fs"
-    // |> Async.RunSynchronously
-    0
-// main argv

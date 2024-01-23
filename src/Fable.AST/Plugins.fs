@@ -8,7 +8,6 @@ type Verbosity =
     | Normal
     | Verbose
     | Silent
-
 type Language =
     | JavaScript
     | TypeScript
@@ -26,6 +25,7 @@ type Language =
         | Php -> "PHP"
         | Dart -> "Dart"
         | Rust -> "Rust"
+        | Plugin -> "Plugin"
 
 type CompilerOptions =
     {
