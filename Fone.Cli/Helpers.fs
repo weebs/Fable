@@ -405,7 +405,12 @@ module Query =
                 else []
             | None -> []
         | Array(genericArg, arrayKind) ->
-            [ GenericInteraction.Instantiation ("System.Array`1", [ resolveType generics genericArg ]) ]
+            match arrayKind with
+            | ResizeArray ->
+                [ GenericInteraction.Instantiation ("System.Collections.Generic.List`1", [ resolveType generics genericArg ]) ]
+            | MutableArray ->
+                [ GenericInteraction.Instantiation ("System.Array`1", [ resolveType generics genericArg ]) ]
+            | ImmutableArray -> failwith "todo"
         | _ -> []
     let isUnresolvedGenericType: Type -> bool = function
         | GenericParam(_name, _isMeasure, _constraints) -> true
@@ -567,7 +572,12 @@ let inline duInfo (o: 't) =
 let pullGenericTypeUsages generics (com: Type.ICompiler) (t: Type) : GenericInteraction list =
     match t with
     | Array(genericArg, arrayKind) ->
-        [ (GenericInteraction.Instantiation ("System.Array`1", [ resolveType generics genericArg ])) ]
+        match arrayKind with
+        | ResizeArray ->
+            [ GenericInteraction.Instantiation ("System.Collections.Generic.List`1", [ resolveType generics genericArg ]) ]
+        | MutableArray ->
+            [ GenericInteraction.Instantiation ("System.Array`1", [ resolveType generics genericArg ]) ]
+        | ImmutableArray -> failwith "todo"
     | DeclaredType(entityRef, genericArgs) when genericArgs.Length > 0 && not (entityRef.FullName.StartsWith "Microsoft.FSharp.Core.PrintfFormat") ->
         // todo: probably add the constructor
         [ (GenericInteraction.Instantiation (entityRef.FullName, genericArgs)) ]
@@ -576,24 +586,24 @@ let pullGenericTypeUsages generics (com: Type.ICompiler) (t: Type) : GenericInte
     | Option(genericArg, isStruct) ->
         [ ValueOption genericArg ]
     | _ -> []
-let pullGenericTypes (com: Type.ICompiler) (args: Type list) : string list =
-    let mutable items = []
-    for t in args do
-        match t with
-        | Type.GenericParam(name, isMeasure, _constraints) ->
-            if not (items |> List.contains name) then
-                items <- name :: items
-        | Type.DeclaredType (_entityRef, genericArgs) ->
-            for g in genericArgs do
-                match g with
-                | GenericParam(name, isMeasure, _constraints) ->
-                    if not (items |> List.contains name) then
-                        items <- name :: items
-                | _ ->
-                    ()
-        | _ ->
-            ()
-    items |> List.rev
+// let pullGenericTypes (com: Type.ICompiler) (args: Type list) : string list =
+//     let mutable items = []
+//     for t in args do
+//         match t with
+//         | Type.GenericParam(name, isMeasure, _constraints) ->
+//             if not (items |> List.contains name) then
+//                 items <- name :: items
+//         | Type.DeclaredType (_entityRef, genericArgs) ->
+//             for g in genericArgs do
+//                 match g with
+//                 | GenericParam(name, isMeasure, _constraints) ->
+//                     if not (items |> List.contains name) then
+//                         items <- name :: items
+//                 | _ ->
+//                     ()
+//         | _ ->
+//             ()
+//     items |> List.rev
 // type Compiler =
 //     abstract member TryGetEntity: EntityRef -> Entity option
 //     abstract member TryGetMember: MemberRef -> MemberFunctionOrValue option
@@ -1067,7 +1077,8 @@ type Print =
             fullName.Replace(".", "_")
                 .Replace($"`{generics.Length}", $"__{genericParamTypeString}")
                 .Replace($"${generics.Length}", $"__{genericParamTypeString}")
-        className.Replace("Tmds_Linux", "")
+        // .Replace("Tmds_Linux", "")
+        if className.StartsWith "Fable_" then className.Substring("Fable_".Length) else className
     static member compiledTypeName (generics: C.Type list, _type: EntityRef) =
         Print.compiledTypeName (generics, _type.FullName)
     static member compiledMethodName (m: MemberDecl, generics: C.Type list, _type: EntityRef) =

@@ -59,6 +59,7 @@ void Runtime_clear_pool() {
             pool.data[i].checked = true;
         }
         unsigned char count = *(unsigned char *)r.data;
+        // todo: r.checked == true ?
         if (count <= 0) {
             void (*f)(void*) = r.f;
             //printf("Autorelease freeing %p\n", r.data);
@@ -74,6 +75,13 @@ void Runtime_clear_pool() {
         free(pool.data);
         pool.data = 0;
     }
+}
+void Runtime_pool_end() {
+    // todo: Run destructors ?
+    pool.size = 0;
+    pool.n = 0;
+    free(pool.data);
+    pool.data = 0;
 }
 
 void* Runtime_autorelease(void* ptr, void* destructor) {
@@ -140,14 +148,14 @@ void Runtime_swap_value(void** location, void* value, void* destructor) {
         RunProcess = None
         CompilerOptions = options
     }
-    let compileProject projFile =
-        let projCracked = ProjectCracked.Init(cliArgs projFile options)
-        let checker = InteractiveChecker.Create(projCracked.ProjectOptions)
-        let fsharpAssemblies = checker.GetImportedAssemblies() |> Async.RunSynchronously
-        let filePaths, sourceReader = Fable.Compiler.File.MakeSourceReader projCracked.SourceFiles
-        let results = checker.ParseAndCheckProject(projCracked.ProjectFile, filePaths, sourceReader, Array.last projCracked.SourceFilePaths, ignore) |> Async.RunSynchronously
-        ()
-    let compileSingleFile (projFile: string) = //async {
+    // let compileProject projFile =
+    //     let projCracked = ProjectCracked.Init(cliArgs projFile options)
+    //     let checker = InteractiveChecker.Create(projCracked.ProjectOptions)
+    //     let fsharpAssemblies = checker.GetImportedAssemblies() |> Async.RunSynchronously
+    //     let filePaths, sourceReader = Fable.Compiler.File.MakeSourceReader projCracked.SourceFiles
+    //     let results = checker.ParseAndCheckProject(projCracked.ProjectFile, filePaths, sourceReader, Array.last projCracked.SourceFilePaths, ignore) |> Async.RunSynchronously
+    //     ()
+    let compileProject (projFile: string) = //async {
         let pathResolver = {
             new PathResolver with
                 member this.TryPrecompiledOutPath (sourceDir, relativePath) = None
@@ -198,12 +206,12 @@ void Runtime_swap_value(void** location, void* value, void* destructor) {
                 let c_file = Fable.C.File.transformFile com transformedFile
                 Fable.C.File.writeFile filePath c_file.includes c_file.compiledModule c_file.static_constructor
         |]
-        let header = Fable.C.Writer.writeModuleHeaderFile { currentFile = ""; idents = [] } "/build/project.json"
+        let header = Fable.C.Writer.writeModuleHeaderFile runtime { currentFile = ""; idents = [] } "/build/project.json"
         let files = io.files
         let generics = files |> Seq.find (fun kv -> kv.Key.Contains ".generics.")
         let output = compiledFiles |> String.concat "\n"
         let compiledOutput =
-            $"{header.file}\n{runtime}\n{header.generics}\n{output}"
+            $"{header.file}\n{header.generics}\n{output}"
             |> _.Replace("\r\n", "\n").Replace("\r", "")
         let outputPath = projFile.Replace (".fsproj", ".fs.c")
         File.WriteAllText (outputPath, compiledOutput)
@@ -211,6 +219,32 @@ void Runtime_swap_value(void** location, void* value, void* destructor) {
 
 [<EntryPoint>]
 let main argv =
-    let projFile = "C:/Users/Dave/projects/Fable/src/quicktest/Quicktest.fsproj"
-    Compiler.compileSingleFile projFile // "C:/Users/Dave/projects/Fable/src/quicktest/QuickTest.fs"
+    let projText = """
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RollForward>Major</RollForward>
+    <LangVersion>Preview</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+<!--    <Compile Include="Generics.fs" />-->
+<!--    <Compile Include="QuickTest.fs" />-->
+    <Compile Include="Main.fs" />
+    <Content Include="quicktest.fs.js" />
+    <Content Include="*.fs.h" />
+    <Content Include="*.fs.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Fable.Core/Fable.Core.fsproj" />
+  </ItemGroup>
+</Project>
+"""
+    let testsProjFile =
+        // Path.Join(__SOURCE_DIRECTORY__, "../tests/Fable.Tests.C/Fable.Tests.C.fsproj")
+        "C:/Users/Dave/projects/Fable/src/quicktest/Quicktest.fsproj"
+    File.WriteAllText("/Quicktest.fsproj", projText)
+    // let quicktest = Path.Join(__SOURCE_DIRECTORY__, "../tests/Fable.Tests.C/Fable.Tests.C.fsproj")
+    // Compiler.compileSingleFile projFile // "C:/Users/Dave/projects/Fable/src/quicktest/QuickTest.fs"
+    Compiler.compileProject "/Quicktest.fsproj"
     0

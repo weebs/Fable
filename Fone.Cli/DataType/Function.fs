@@ -51,6 +51,7 @@ let buildConstructor context generics genericParams (member_declaration: MemberD
 //                    C.Statement.Emit $"Runtime_set_finalizer(this$, &{finalizer_name});"
             C.Emit "__thread_context++;"
             C.Emit $"this$->__refcount = 1;"
+            // todo: Initialize variables
             yield! f
             C.Statement.Emit ("// use_gc_for_address()")
             // todo: This should actually return ident, but is this ok for now?
@@ -304,13 +305,16 @@ module Type =
                         compiledModule += (f.id, C.Function f)
                         // compiler.UpdateFile(context.currentFile, FileCompilationResults.AddClassDeclaration, classDecl)
                 (includes, compiledModule.Value)
+
 let gatherAnonymousFunctions (context: Context) (body: Expr) : (string * C.ModuleDeclaration) list =
-    let anonymous_functions = Function.findAnonymousFunctions body
+    let anonymous_functions =
+        Function.findAnonymousFunctions context body
+        |> List.choose id
     let mutable toCompile = []
     for fn in anonymous_functions do
         match fn with
-        | Some (Delegate(idents, delegateBody, stringOption, tags), delegateIdents) ->
-            let (Some (delegateExpr, _)) = fn
+        | (Delegate(idents, delegateBody, stringOption, tags), delegateIdents) ->
+            let (delegateExpr, _) = fn
             let isSimple = Query.isEmptyDelegate idents delegateBody
             if not isSimple then
                 let id = getAnonymousFunctionName context.currentFile delegateExpr
@@ -327,9 +331,9 @@ let gatherAnonymousFunctions (context: Context) (body: Expr) : (string * C.Modul
             else ()
         | _ -> ()
     toCompile |> List.distinctBy fst
-let findAnonymousFunctions (expr: Expr) : Option<(Expr * Ident list)> list =
+let findAnonymousFunctions ctx (expr: Expr) : Option<(Expr * Ident list)> list =
     let mutable childDelegates = []
-    expr |> walkExpr (fun e ->
+    let f (e: Expr) =
         match e, e.Range with
         | Delegate(idents, body, stringOption, tags), Some range ->
             Some (e, gatherIdentsBefore e expr)
@@ -353,6 +357,8 @@ let findAnonymousFunctions (expr: Expr) : Option<(Expr * Ident list)> list =
                 printfn $"Existing delegates: %A{childDelegates |> List.map (Print.printExpr 2)}"
                 Some (Delegate(uncurriedArgs, unwrappedLambdaBody, None, []), gatherIdentsBefore e expr)
             else None
+        | _ -> None
+    expr |> walkExpr (fun e ->
 //                let f = Function.transformFunc id idents delegateBody []
 //                            if Query.isClosure (fst fn.Value) then
 //                match delegateIdents |> List.tryFind (fun i -> Fable.Transforms.FableTransforms.isIdentUsed i.Name delegateBody) with
@@ -360,6 +366,33 @@ let findAnonymousFunctions (expr: Expr) : Option<(Expr * Ident list)> list =
 //                    print.printfn "Can't handle closures"
 //                | _ ->
 //                    compiledModule += (id, C.Function f)
+        match e with
+        | Fable.Let(ident, value, body) ->
+            match f value with
+            | Some (lambdaExpr, idents) ->
+                let value =
+                    match value with
+                    | Fable.Lambda(lambdaIdent, body, stringOption) ->
+                        let visit = Fable.Transforms.AST.visit
+                        let name = getAnonymousFunctionName ctx.currentFile lambdaExpr
+                        let args, body = unwrapLambda lambdaIdent body
+                        let rec replace (e: Expr) =
+                            match e with
+                            | Fable.Call (Fable.IdentExpr i, _info, _typ, _range) when i.Name = ident.Name ->
+                                Fable.Call (Fable.IdentExpr { i with Name = name }, _info, _typ, _range)
+                            | Fable.CurriedApply(Fable.IdentExpr i, exprs, ``type``, sourceLocationOption)
+                                    when i.Name = ident.Name  ->
+                                Fable.CurriedApply(Fable.IdentExpr { i with Name = name }, exprs, ``type``, sourceLocationOption)
+                            | e -> visit replace e
+                        let delegateExpr = body |> replace
+                        Delegate(args, delegateExpr, None, [])
+                        // if not (Query.isClosure (List.tail ctx.idents) body) then
+                        //     // body |> walkExprInPlace replace
+                        // else
+                        //     value
+                    | value -> value
+                Some (value, idents)
+            | None -> None
         | _ -> None
     )
 module Generics =

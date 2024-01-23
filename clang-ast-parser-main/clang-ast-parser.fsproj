@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <RootNamespace>clang_ast_parser</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.fs" />
+    <Compile Include="DefsGenerator.fs" />
+    <Compile Include="soundio.fs" />
+    <Compile Include="Writer.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Fli" Version="1.1.1" />
+    <PackageReference Include="FParsec" Version="1.1.1" />
+    <PackageReference Include="FSharp.Data.LiteralProviders" Version="1.0.3" />
+  </ItemGroup>
+
+</Project>

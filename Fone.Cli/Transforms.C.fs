@@ -161,7 +161,7 @@ let rec transformType (generics: (string * Type) list) (t: Fable.Type) =
         | Fable.Type.Option(genericArg, isStruct) ->
             C.Type.UserDefined ($"ValueOption_{(transformType generics genericArg).ToNameString()}" , true, None)
         | Fable.Type.Tuple(genericArgs, isStruct) ->
-            C.Type.UserDefined (tupleName generics genericArgs, true, None)
+            C.Ptr (C.Type.UserDefined (tupleName generics genericArgs, true, None))
         | Fable.Type.Number (kind, _uom) ->
             match kind with
             | NumberKind.Int8 -> C.Char
@@ -248,6 +248,11 @@ let rec transformType (generics: (string * Type) list) (t: Fable.Type) =
 //                    else C.Ptr t
                     match entityRef.FullName with
                     | "voidptr" -> C.Ptr C.Void
+                    | "System.Collections.Generic.Dictionary`2" ->
+                        let t1 = transformType generics genericArgs[0]
+                        let t2 = transformType generics genericArgs[1]
+                        let name = $"System_Collections_Generic_Dictionary__{t1.ToNameString()}_{t2.ToNameString()}"
+                        C.Ptr (C.UserDefined (name, true, None)) // todo: Some ent instead of None
                     | _ -> C.EmitType ($"/* entityRef */ {entityRef.FullName}")
         | Fable.Type.GenericParam(name, isMeasure, constraints) ->
             match generics |> List.tryFind (fun (p, _) -> p = name) |> Option.map snd with
@@ -287,7 +292,13 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
         | Int16, (:? int16 as value) -> C.ValueKind.Int16 value
         | _ -> C.ValueKind.Emit (Print.printObj 0 value)
     | Fable.NewTuple (values, isStruct) ->
-        C.ValueKind.ObjectCompound (tupleName generics (values |> List.map (fun expr -> expr.Type)), values |> List.map (transformExpr ctx generics))
+        if isStruct then
+            C.ValueKind.ObjectCompound (tupleName generics (values |> List.map (fun expr -> expr.Type)), values |> List.map (transformExpr ctx generics))
+        else
+            let tplName = tupleName generics (values |> List.map _.Type)
+            C.Call ($"{tplName}_ctor", values |> List.map (transformExpr ctx generics))
+            |> Compiler.writeExpression
+            |> C.ValueKind.Emit
     | Fable.NewOption(exprOption, ``type``, isStruct) ->
         // ValueSome
         // C.ValueKind.Emit <| "/* TODO: Fable.NewOption */" + Print.printObj 0 valueKind
@@ -336,7 +347,8 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
                     // else
                         Compiler.writeExpression (transformExpr ctx generics fieldExpr))
                 |> fun values -> System.String.Join(", ", values)
-            let result = $"({union_name}){{ {tag}, {{ .{caseInfo.Name} = {{ {values} }} }} }}"
+            // todo: DU ctor and autorelease
+            let result = $"({union_name}){{ 0, {tag}, {{ .{caseInfo.Name} = {{ {values} }} }} }}"
             // todo: union_name for generic types
             if not ent.IsValueType then
                 // [
@@ -628,6 +640,19 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
     | Import(importInfo, ``type``, sourceLocationOption) ->
         let libraryFile = IO.Path.GetFileNameWithoutExtension (Array.last (importInfo.Path.Split(char "/"))) + ".c"
         match (importInfo.Selector, libraryFile) with
+        | "identityHash", "Util.c" ->
+            let t = transformType generics callInfo.Args[0].Type
+            let e = transformExpr ctx generics callInfo.Args[0]
+            // todo: Call GetHashCode for objects / non-primitives
+            C.Call ("System_Hash_hashValue", [ C.Unary (C.Ref, e); C.Call ("sizeof", [ C.Expr.Emit (t.ToTypeString()) ]) ])
+        | "addToDict", "MapUtil.c" ->
+            match callInfo.ThisArg.Value.Type with
+            | Fable.DeclaredType(entityRef, genericArgs) ->
+                // todo: replace with call to transformType on callInfo.ThisArg
+                let t1 = transformType generics genericArgs[0]
+                let t2 = transformType generics genericArgs[1]
+                let name = $"System_Collections_Generic_Dictionary__{t1.ToNameString()}_{t2.ToNameString()}_Add"
+                C.Call (name, (callInfo.ThisArg.Value :: callInfo.Args) |> List.map (transformExpr ctx generics))
         | "fromNumber", "Long.c" | "fromInteger", "Long.c" -> transformExpr ctx generics callInfo.Args[0]
         | "AllocHGlobal", "System.Runtime.InteropServices.Marshal.c" ->
             C.Call ("malloc", callInfo.Args |> List.map (transformExpr ctx generics))
@@ -827,19 +852,19 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                     | _ ->
                         C.MemberAccess
                 C.Binary (C.BinaryOp.Eq, access (transformExpr ctx generics expr1, "union_tag"), C.Value (C.ValueKind.Int tag))
-        | Get(expr, kind, _type, _sourceLocationOption) ->
+        | Get(e, kind, _type, _sourceLocationOption) ->
             let isThisArguments =
-                match expr with
+                match e with
                 | IdentExpr ident ->
                     ident.IsThisArgument || ident.Name = "this$"
                 | _ -> false
             let isThis =
-                match expr with
+                match e with
                 | Fable.Value (Fable.ThisValue typ, _range) ->
                     true
                 | _ -> false
             let exprIsByref =
-                match expr.Type with
+                match e.Type with
                 | DeclaredType(entityRef, genericArgs) -> entityRef.FullName = Const.byrefType || entityRef.FullName = Const.byrefType2
                 | _ -> false
             match kind with
@@ -848,7 +873,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
             | FieldGet info ->
                 // For reference type values we need to deref the object before accessing the field
                 let accessType =
-                    match expr.Type with
+                    match e.Type with
                     | DeclaredType(entityRef, genericArgs) ->
                         match entityRef.FullName with
                         | "Microsoft.FSharp.Core.byref`2" | "Microsoft.FSharp.Core.ByRefKinds.InOut" ->
@@ -865,14 +890,17 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                                    else C.MemberAccess
                             | None -> C.DerefMemberAccess
                     | Array(genericArg, arrayKind) -> C.DerefMemberAccess
+                    // todo
+                    | Tuple(genericArgs, isStruct) ->
+                        if isStruct then C.MemberAccess else C.DerefMemberAccess
                     | _ -> C.MemberAccess
-                match expr.Type with
+                match e.Type with
                 | String ->
                     C.Expr.Emit <|
-                        "strlen(" + (Compiler.writeExpression (transformExpr ctx generics expr)) + ")"
+                        "strlen(" + (Compiler.writeExpression (transformExpr ctx generics e)) + ")"
                 // | Array (typ, kind: ArrayKind) ->
                 //     C.DerefMemberAccess(transformExpr ctx generics expr, info.Name)
-                | _ -> accessType (transformExpr ctx generics expr, info.Name)
+                | _ -> accessType (transformExpr ctx generics e, info.Name)
     //            match expr.Type with
     //            | DeclaredType(entityRef, genericArgs) ->
     //                database.contents.TryGetEntity(entityRef)
@@ -885,7 +913,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
     //            |> Option.defaultValue
     //                (C.MemberAccess (transformExpr ctx generics expr, info.Name))
             | ExprGet getExpr ->
-                match expr.Type with
+                match e.Type with
                 | Array(genericArg, arrayKind) ->
                     let t = (transformType generics genericArg)
                     let genericParamName = t.ToNameString()
@@ -901,26 +929,31 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                         transformExpr ctx generics getExpr
                     ])
                 | _ ->
-                    C.IndexedAccess (transformExpr ctx generics expr, transformExpr ctx generics getExpr)
+                    C.IndexedAccess (transformExpr ctx generics e, transformExpr ctx generics getExpr)
             | OptionValue ->
-                C.MemberAccess (transformExpr ctx generics expr, "value")
+                C.MemberAccess (transformExpr ctx generics e, "value")
             | TupleIndex index ->
-                C.MemberAccess (transformExpr ctx generics expr, $"value_{index}")
+                let case =
+                    match e.Type with
+                    | Tuple(genericArgs, isStruct) ->
+                        if isStruct then C.MemberAccess else C.DerefMemberAccess
+                    | _ -> Print.emitComment
+                case (transformExpr ctx generics e, $"value_{index}")
             | UnionField fieldInfo ->
                 let ent = database.contents.GetEntity(fieldInfo.Entity)
                 let caseName = ent.UnionCases.[fieldInfo.CaseIndex].Name
                 let fieldName = ent.UnionCases.[fieldInfo.CaseIndex].UnionCaseFields.[fieldInfo.FieldIndex].Name
                 let access =
-                    match expr.Type with
+                    match e.Type with
                     | DeclaredType (entRef, genArgs) ->
                         let ent = compiler.GetEntity(entRef.FullName)
                         if ent.IsValueType then C.MemberAccess
                         else C.DerefMemberAccess
                     | _ ->
                         C.MemberAccess
-                C.MemberAccess (C.MemberAccess (access (transformExpr ctx generics expr, "union_data"), caseName), fieldName)
+                C.MemberAccess (C.MemberAccess (access (transformExpr ctx generics e, "union_data"), caseName), fieldName)
             | a ->
-                C.MemberAccess (transformExpr ctx generics expr, $"%A{a}")
+                C.MemberAccess (transformExpr ctx generics e, $"%A{a}")
         | Emit(emitInfo, _type, _sourceLocationOption) ->
     //        transformEmit generics emitInfo
             let emitInfo = { emitInfo with CallInfo = { emitInfo.CallInfo with Args = convertCallArgs generics expr emitInfo.CallInfo } }
@@ -1174,6 +1207,14 @@ let getAnonymousFunctionName (filename: string) (expr: Expr) =
         | Delegate (idents, body, stringOption, tags) -> idents
         | Lambda(ident, body, stringOption) -> unwrapLambda ident body |> fst
         | _ -> [] // shouldn't happen
+    let identRanges =
+        match expr with
+        | Delegate (idents, _, _, _) -> idents |> List.map _.Range
+        | Lambda(ident, body, _) ->
+            unwrapLambda ident body
+            |> fst
+            |> List.map _.Range
+        | _ -> []
     let file = filename.Split(char "/") |> Array.last
     let file = file.Replace(".", "_")
     let range =
@@ -1182,9 +1223,17 @@ let getAnonymousFunctionName (filename: string) (expr: Expr) =
         | None ->
             let hasRange (e: Expr) = if e.Range.IsSome then Some [ e ] else None
             let identRanges = idents |> List.map (fun i -> i.Range)
-            let (nextExprWithRange, range) =
+            let sources =
                 expr
-                |> walkExpr (fun e -> if e.Range.IsSome then Some (e, e.Range.Value) else None)
+                |> walkExpr (Some >> id)
+                |> List.choose id
+            let candidates =
+                expr
+                |> walkExpr (fun e -> if e.Range.IsSome then Some e.Range.Value else None)
+            let total = (identRanges) @ candidates
+            // let (nextExprWithRange, range) =
+            let range =
+                total
                 |> List.find Option.isSome |> Option.get
                 // expr
                 // |> Fable.Transforms.AST.visitFromOutsideIn (fun e -> if e.Range.IsSome && e.Range.Value <> Unchecked.defaultof<_>
@@ -1197,7 +1246,7 @@ let getAnonymousFunctionName (filename: string) (expr: Expr) =
             //     Unchecked.defaultof<_>
 //                |> Option.defaultValue (fun () -> List.map (Fable.Transforms.AST.visitFromOutsideIn hasRange) idents)
 //            nextExprWithRange.Range.Value
-    $"{file}_anonymous_fn_{range.start.line}"
+    $"{file}_anonymous_fn_{range.start.line}_{range.start.column}"
 let transformDelegate (ctx: Context) (generics: (string * Type) list) (expr: Expr) (idents: Ident list) (body: Expr) : C.Expr =
     match body with
     | Call(callee, callInfo, ``type``, sourceLocationOption) ->
@@ -1307,7 +1356,8 @@ let rec requiresTracking generics t =
     | Array _ -> true
     | List _ -> true
     | Any -> true
-    | Tuple(genericArgs, isStruct) -> not isStruct || (List.exists (requiresTracking generics) genericArgs)
+    | Tuple(genericArgs, isStruct) ->
+        not isStruct || (List.exists (requiresTracking generics) genericArgs)
     | GenericParam(name, isMeasure, constraints) -> requiresTracking generics (resolveType generics t)
     | AnonymousRecordType(fieldNames, genericArgs, isStruct) -> not isStruct || (List.exists (requiresTracking generics) genericArgs)
     | Boolean -> false
@@ -1599,6 +1649,10 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
         | Sequential exprs -> exprs  |> List.collect (loop generics)
         | Let(ident, value, letBody) ->
             // if ctx.currentFile.Contains "audio.fs" then printfn $"{Print.printExpr 0 body}"
+            match value with
+            | Fable.Lambda _ ->
+                ()
+            | _ -> ()
             transformLet ctx generics ident value letBody
         | IdentExpr ident -> [ C.Statement.Expression <| C.Ident (ident, isValueType ident.Type) ]
         | DecisionTree(expr1, targets) ->
@@ -1617,7 +1671,9 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
                     value = C.ExprAssignment (transformExpr ctx generics start)
                     requiresTracking = false
                 }
-            wrapStatementsWithThreadContextUpdate [ C.ForLoop (declaration, condition, each, loop generics expr) ]
+            wrapStatementsWithThreadContextUpdate [
+                C.ForLoop (declaration, condition, each, loop generics expr)
+            ]
         | Set(expr, kind, _type, value, _sourceLocationOption) ->
             // log $"========================= set ============================="
             // log $"{Print.printObj 0 expr.Type}"
@@ -1689,7 +1745,9 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
                     match expr.Type with
                     | Array (_genericArg, _kind) -> //[ C.Assignment ((C.IndexedAccess (transformExpr ctx generics expr, transformExpr ctx generics setExpr)),
                                                                                     //transformExpr ctx generics value) ]
-                        [ C.Statement.Expression (C.Call ($"System_Array__{(transformType generics _genericArg).ToNameString()}_set_Item", [
+                        let genericType = (transformType generics _genericArg).ToNameString()
+                        [
+                          C.Statement.Expression (C.Call ($"System_Array__{genericType}_set_Item", [
                             transformExpr ctx generics expr
                             transformExpr ctx generics setExpr
                             transformExpr ctx generics value
@@ -1762,27 +1820,6 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
     loop generics body
     //        [ C.Statement.Expression (C.Value (C.ValueKind.Int 0)) ]
 
-//let count = ref 0
-//let inline transformMemberDebug generics body =
-//    if true then
-//        //C.Emit $"/* %A{body} */" :: transformMember ctx generics body
-//        transformMember ctx generics body
-//    else
-//        count := count.Value + 1
-//        let display = Display.fableExpression count.Value body |> Seq.take (count.Value + 1) |> Seq.toArray
-//        for i in 0..(display.Length - 2) do
-//            printf $"{display.[i]}"
-//        let duCase = (Seq.last display).Replace("\n", "")
-//        let translation = transformMember ctx generics body
-//        printf "%A" (List.head translation)
-//        for _ in 1..2 do
-//            printf "    "
-//        for i in 0..(display.Length - 2) do
-//            printf $"{display.[i]}"
-//        printfn $"    {duCase}"
-//        count := count.Value - 1
-//        translation
-
 let transformMemberDeclArgs generics (args: Ident list) : Ident list * C.Statement list =
     let args_and_statements =
         args |> List.map (fun arg ->
@@ -1805,9 +1842,3 @@ let transformMemberDeclArgs generics (args: Ident list) : Ident list * C.Stateme
     let args = args_and_statements |> List.map fst |> filterFunctionMethodArgs
     let statements = args_and_statements |> List.collect snd
     (args, statements)
-//    match database.contents.TryGetMember(memberDecl.MemberRef) with
-//    | Some m when m.DeclaringEntity.IsSome ->
-//        match database.contents.TryGetEntity(m.DeclaringEntity.Value) with
-//        | Some ent ->
-//        | _ -> memberDecl.Args
-//    | _ -> memberDecl.Args

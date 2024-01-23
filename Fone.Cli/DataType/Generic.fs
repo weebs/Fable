@@ -223,12 +223,16 @@ void {typeName}_set_Item({typeName}* this$, int index, {t.ToTypeString()} value)
 void {typeName}_Destructor({typeName}* this$) {{
     {
         if (requiresTracking [] genericParms[0]) then
-            let (C.AST.C.Ptr t) = t
-            $"
-        for (int i = 0; i < this$->length; i++) {{
-            Runtime_end_var_scope(this$->data[i], {t.ToNameString ()}_Destructor);
-        }}
-            "
+            match t with
+            | C.AST.C.Ptr t ->
+                $"
+            for (int i = 0; i < this$->length; i++) {{
+                if (this$->data[i] == NULL) {{ continue; }}
+                Runtime_end_var_scope(this$->data[i], {t.ToNameString ()}_Destructor);
+            }}
+                "
+            | _else ->
+                ""
         else
             ""
     }
@@ -241,10 +245,16 @@ void {typeName}_Destructor({typeName}* this$) {{
                 else
                     added_types.Add typeName
                     generic_implementations.Add(decl, ctor)
-            | Instantiation(fullName, genericParams) when compiler.genericClassDeclarations.Value.ContainsKey fullName || fullName.StartsWith("System.Array") ->
-                let classDecl = compiler.genericClassDeclarations.Value.[if fullName = "System.Array" then "System.Array`1" else fullName]
+            | Instantiation(fullName, genericParams) when
+                    compiler.genericClassDeclarations.Value.ContainsKey fullName
+                    || compiler.genericClassDeclarations.Value.ContainsKey $"Fable.{fullName}"
+                    || fullName.StartsWith("System.Array") ->
+                let usePolyfillFromMixin =
+                    compiler.genericClassDeclarations.Value.ContainsKey $"Fable.{fullName}"
+                let implName = if usePolyfillFromMixin then "Fable." + fullName else fullName
+                let classDecl = compiler.genericClassDeclarations.Value.[if fullName = "System.Array" then "System.Array`1" else implName]
 //                let ent = database.contents.GetEntity(classDecl.Entity)
-                let ent = compiler.GetEntity fullName
+                let ent = compiler.GetEntity implName
                 let genericArgNames =
                     ent.GenericParameters |> List.map (fun p -> p.Name)
                 let generics = (genericParams |> List.zip genericArgNames)
@@ -252,7 +262,8 @@ void {typeName}_Destructor({typeName}* this$) {{
                 if not (added_types.Contains(name)) then
                     let methods =
                         genericMethodDeclarations.Value
-                        |> Map.filter (fun k v -> fst k = fullName)
+                        // |> Map.filter (fun k v -> fst k = fullName)
+                        |> Map.filter (fun k v -> fst k = implName)
                         |> Map.toList |> List.map snd
                         |> List.map (fun m ->
                             try
