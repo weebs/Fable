@@ -228,6 +228,7 @@ let main argv =
     <LangVersion>Preview</LangVersion>
   </PropertyGroup>
   <ItemGroup>
+
 <!--    <Compile Include="Generics.fs" />-->
 <!--    <Compile Include="QuickTest.fs" />-->
     <Compile Include="Main.fs" />
