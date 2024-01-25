@@ -2933,7 +2933,7 @@ module Util =
                 | Some e -> Some e
                 | None when info.IsInterface ->
                     callAttachedMember com r typ callInfo ent memb |> Some
-                | None ->
+                | None when com.Options.Language = Plugin ->
                     let ident = Fable.IdentExpr {
                         Name = memb.FullName
                         Type = Fable.Unit // todo: create right type
@@ -2943,8 +2943,9 @@ module Util =
                         Range = None
                     }
                     let call = Some (Fable.Call (ident, callInfo, typ, r))
-                    // failReplace com ctx r info callInfo.ThisArg |> Some
                     call
+                | None ->
+                    failReplace com ctx r info callInfo.ThisArg |> Some
         | _ -> None
 
     let addWatchDependencyFromMember
