@@ -536,7 +536,7 @@ let convertCallArgs generics (callee: Fable.Expr) (callInfo: Fable.CallInfo) =
 //            expr
         | _ -> arg
     if debugger.contents then
-        debug "%s" (Environment.StackTrace) |> ignore
+        // debug "%s" (Environment.StackTrace) |> ignore
         debug "%A" callee |> ignore
         debug "%A" generics |> ignore
         debug "%A" callInfo |> ignore
