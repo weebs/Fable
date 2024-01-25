@@ -9,6 +9,7 @@
         <Compile Include="System.fs" />
         <Compile Include="Program.fs" />
         <Content Include="*.c" />
+        <Content Include="*.js" />
     </ItemGroup>
 
 </Project>
