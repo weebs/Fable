@@ -19,7 +19,7 @@ let buildConstructor context generics genericParams (member_declaration: MemberD
     let c_types = List.map snd generics |> List.map (transformType generics)
     let id = Print.compiledMethodName("ctor", c_types, fullName)
     let typeName = Print.compiledTypeName(List.map (transformType generics) genericParams, fullName)
-    let type_sig = Print.compiledTypeSignature (generics, transformType, database.contents, member_declaration)
+    let type_sig = Print.compiledTypeSignature (generics, transformType, context.db, member_declaration)
     let finalizer_name = Print.finalizerName (c_types, fullName)
     let return_type = if isValueType then C.UserDefined (typeName, true, None) else C.Ptr (C.UserDefined (typeName, true, None))
     let function_info: C.FunctionInfo = {
@@ -290,7 +290,7 @@ module Type =
                         compiledModule += (name, C.Function f)
         //                classDeclarations += (classDecl.Entity.FullName, classDecl)
                         compiler.UpdateFile(context.currentFile, FileCompilationResults.AddClassDeclaration, classDecl)
-                    match Fable.C.Helpers.database.contents.TryGetEntity(classDecl.Entity) with
+                    match context.db.TryGetEntity(classDecl.Entity) with
                     | Some ent -> compiler.AddEntity(ent)
                     | _ -> ()
                     #if !FABLE_COMPILER
@@ -419,8 +419,8 @@ module Generics =
             Function.buildConstructor context generics genericParams member_declaration entityName isValueType
         else
             //let name = Print.compiledMethodName(fableMethodName, c_types, declaringEntity)
-            let type_sig = Print.compiledTypeSignature (generics, transformType, database.contents, member_declaration)
-            let name = Print.compiledMethodName (generics, transformType, database.contents, member_declaration)
+            let type_sig = Print.compiledTypeSignature (generics, transformType, context.db, member_declaration)
+            let name = Print.compiledMethodName (generics, transformType, context.db, member_declaration)
             if name.EndsWith("Counter_AddItem") then
                 Transforms.debugger.contents <- true
             let function_info = Function.transformFunc context name member_declaration.Args member_declaration.Body generics

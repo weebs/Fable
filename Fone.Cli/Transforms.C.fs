@@ -324,7 +324,7 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
 //        C.ValueKind.Void
         C.ValueKind.Emit $"/* %A{valueKind} */"
     | Fable.NewUnion(exprs, tag, ref, genArgs) ->
-        let ent = database.contents.TryGetEntity(ref)
+        let ent = ctx.db.TryGetEntity(ref)
         match ent with
         | None -> C.ValueKind.Emit (Print.printComment valueKind)
         | Some ent ->
@@ -373,7 +373,7 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
     | Fable.NewRecord(values, entityRef, _genArgs) ->
 //        let exprTypes = values |> List.map (fun v -> v.IsSimpleExpr)
 //        let isSimpleExpr = exprTypes |> List.forall (fun simple -> simple = true)
-        database.contents.TryGetEntity(entityRef)
+        ctx.db.TryGetEntity(entityRef)
         |> Option.map (fun entity ->
             let fieldInfo =
                 entity.FSharpFields
@@ -405,11 +405,11 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
     | Fable.ThisValue ``type`` ->
         match ``type`` with
         | Fable.DeclaredType(_entityRef, _genericArgs) ->
-            match database.contents.TryGetEntity(_entityRef) with
+            match ctx.db.TryGetEntity(_entityRef) with
             | Some ent when ent.FullName = "Microsoft.FSharp.Core.byref`2" ->
                 match _genericArgs.[0] with
                 | Fable.DeclaredType(entityRef, genericArgs) ->
-                    match database.contents.TryGetEntity(entityRef) with
+                    match ctx.db.TryGetEntity(entityRef) with
                     | Some ent when not (ent.IsValueType) -> C.ValueKind.Emit "(*this$)"
                     | _ -> C.ValueKind.Emit "this$"
                 | _ -> C.ValueKind.Emit "this$"
@@ -457,7 +457,7 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
     | Fable.BoolConstant value ->
         C.ValueKind.Bool value
     | Fable.StringTemplate(exprOption, parts, values) ->
-        let sprintf_args = transformStringTemplate ctx database.contents generics parts values
+        let sprintf_args = transformStringTemplate ctx ctx.db generics parts values
         let inner = Compiler.writeExpression (C.Call ("sprintf", C.Expr.Emit "buffer" :: sprintf_args))
         C.ValueKind.Emit $"({{ char buffer[2048]; {inner}; buffer;}})"
 //        C.BlockExpr [
@@ -607,7 +607,7 @@ let transformClass (generics: (string * Type) list) (com: MyCompiler) (c: ClassD
 let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) =
     let isDllImport =
         callInfo.MemberRef
-        |> (Option.bind database.contents.TryGetMember) |> Option.map (fun ref -> ref.Attributes)
+        |> (Option.bind ctx.db.TryGetMember) |> Option.map (fun ref -> ref.Attributes)
         |> Option.defaultValue Seq.empty |> Seq.exists (fun a -> a.Entity.FullName = "System.Runtime.InteropServices.DllImportAttribute")
     let callMethod (memberRef: EntityRef) (memberInfo: MemberRefInfo) =
         let calleeCompiledName =
@@ -624,13 +624,13 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
         | Some this ->
             match this.Type with
             | DeclaredType(entityRef, genericArgs) ->
-                match database.contents.TryGetEntity(entityRef) with
+                match ctx.db.TryGetEntity(entityRef) with
                 | Some ent when ent.IsValueType ->
                     C.Call (calleeCompiledName, (C.Unary (C.UnaryOp.Ref, transformExpr ctx generics this)) :: (callArgs |> List.map (transformExpr ctx generics)))
                 | _ -> C.Call (calleeCompiledName, (this :: callArgs) |> List.map (transformExpr ctx generics))
             | _ -> C.Call (calleeCompiledName, (this :: callArgs) |> List.map (transformExpr ctx generics))
         | None -> C.Call (calleeCompiledName, callArgs |> List.map (transformExpr ctx generics))
-    let dependencies = Query.grabDependencies database.contents expr
+    let dependencies = Query.grabDependencies ctx.db expr
     match callee with
     | Fable.IdentExpr ident ->
         match ident.Type with
@@ -692,7 +692,7 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
                 C.Expr.Unary (C.UnaryOp.Ref, transformExpr ctx generics body)
             | _ ->
                 C.Expr.Unary (C.UnaryOp.Ref, transformExpr ctx generics callInfo.Args.[0])
-        | "toConsole", "String.c" -> Print.toConsole ctx database.contents transformType transformExpr transformValueKind generics callInfo
+        | "toConsole", "String.c" -> Print.toConsole ctx ctx.db transformType transformExpr transformValueKind generics callInfo
         | "toString", "Types.c" ->
             C.Call ((callInfo.Args[0].Type |> transformType generics).ToNameString() + "_toString", [ callInfo.Args[0] |> transformExpr ctx generics ])
         | "format", "String.c" -> Print.format ctx transformType transformExpr transformValueKind generics callInfo
@@ -745,7 +745,7 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
             | MemberImport (mem) ->
                 match mem with
                 | MemberRef.MemberRef (memberRef, info) ->
-                    match database.contents.TryGetMember(mem) with
+                    match ctx.db.TryGetMember(mem) with
                     | Some ent ->
                         let attributes = ent.Attributes
                         match (attributes |> Seq.tryFind (fun attr -> attr.Entity.FullName = "System.Runtime.InteropServices.DllImportAttribute")) with
@@ -783,7 +783,7 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
             | _ -> false
         match callInfo.MemberRef with
         | Some (MemberRef(declaringEntity, memberRefInfo)) ->
-            let ent = database.contents.TryGetEntity(declaringEntity)
+            let ent = ctx.db.TryGetEntity(declaringEntity)
             C.Expr.Emit (Print.printComment expr + "\n" + (ent |> Option.map (fun e -> Print.printComment e) |> Option.defaultValue ""))
         | _ ->
             Print.emitComment expr
@@ -855,7 +855,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
             | "toConsole" -> C.Expr.Emit "printf"
             | _ -> Print.emitComment expr // C.Expr.Emit importInfo.Selector
         | IdentExpr ident ->
-            match isArgValueThis generics database.contents ident with
+            match isArgValueThis generics ctx.db ident with
             | Some ident -> C.Ident (ident, true)
             | _ -> C.Ident (ident, isValueType ident.Type)
         | Operation(operationKind, tags, ``type``, _sourceLocationOption) ->
@@ -867,8 +867,8 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
             else
                 transformCall ctx generics callInfo callee expr
         | Value(StringTemplate(exprOption, parts, values), sourceLocation) ->
-            let sprintf_args = transformStringTemplate ctx database.contents generics parts values
-            let sprintf_args = transformStringTemplate ctx database.contents generics parts values
+            let sprintf_args = transformStringTemplate ctx ctx.db generics parts values
+            let sprintf_args = transformStringTemplate ctx ctx.db generics parts values
             let inner = Compiler.writeExpression (C.Call ("sprintf", C.Expr.Emit "buffer" :: sprintf_args))
             C.Expr.Emit $"({{ char buffer[2048]; {inner}; buffer;}})"
     //        C.BlockExpr [
@@ -923,7 +923,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                         | "Microsoft.FSharp.Core.byref`2" | "Microsoft.FSharp.Core.ByRefKinds.InOut" ->
                             C.DerefMemberAccess
                         | _ ->
-                            match database.contents.TryGetEntity(entityRef) with
+                            match ctx.db.TryGetEntity(entityRef) with
                             | Some ent ->
                                 if isThis then C.MemberAccess
                                 elif not ent.IsValueType &&
@@ -984,7 +984,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                     | _ -> Print.emitComment
                 case (transformExpr ctx generics e, $"value_{index}")
             | UnionField fieldInfo ->
-                let ent = database.contents.GetEntity(fieldInfo.Entity)
+                let ent = ctx.db.GetEntity(fieldInfo.Entity)
                 let caseName = ent.UnionCases.[fieldInfo.CaseIndex].Name
                 let fieldName = ent.UnionCases.[fieldInfo.CaseIndex].UnionCaseFields.[fieldInfo.FieldIndex].Name
                 let access =
@@ -1007,7 +1007,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                 | Some t ->
                     match t with
                     | DeclaredType(entityRef, genericArgs) ->
-                        let e = database.contents.GetEntity(entityRef)
+                        let e = ctx.db.GetEntity(entityRef)
                         C.Expr.Value <| C.ValueKind.Bool (e.IsValueType)
                     | Array(genericArg, arrayKind) ->
                         C.Expr.Value <| C.ValueKind.Bool false
@@ -1124,7 +1124,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                 | Value(StringConstant value, sourceLocationOption) ->
                     C.Expr.Emit value
                 | Value(StringTemplate(exprOption, parts, values), _) ->
-                    let compiler = database.contents
+                    let compiler = ctx.db
                     C.Expr.Emit (emitEvaluateStringTemplate ctx compiler generics parts values)
                 | _ ->
                     Print.emitComment expr
@@ -1143,7 +1143,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
     //                        |> Option.map (fun lastParam -> hasAttribute Atts.paramList lastParam.Attributes)
     //                        |> Option.defaultValue false
     //                    hasParamArray memb || hasParamSeq memb
-                    match database.contents.TryGetMember(emitInfo.CallInfo.MemberRef.Value) with
+                    match ctx.db.TryGetMember(emitInfo.CallInfo.MemberRef.Value) with
                     | Some info ->
                         let hasParamArray = info.CurriedParameterGroups.Length > 0 && info.CurriedParameterGroups.[0].Length > 0 && (List.last info.CurriedParameterGroups.[0]).Attributes |> Seq.exists (fun attribute -> attribute.Entity.FullName = "System.ParamArrayAttribute")
                         let emitInfo = { emitInfo with CallInfo = { emitInfo.CallInfo with Args = (convertCallArgs generics expr emitInfo.CallInfo) } }
@@ -1369,7 +1369,7 @@ let transformNewRecord ctx generics expr =
             let toReturn =
                 values |> List.collect snd
 //                setupStatements |> List.reduce (@)
-            let entity = database.contents.GetEntity(entityRef)
+            let entity = ctx.db.GetEntity(entityRef)
             let fieldInfo =
                 entity.FSharpFields
                 |> List.map (fun f -> (f.Name, transformType generics f.FieldType))

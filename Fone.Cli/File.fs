@@ -40,7 +40,6 @@ type CompiledAst = { includes: string list; compiledModule: Map<string, C.Module
 let writeFile (sourceFilePath: string) (includes: string list) (compiledModule: Map<string, C.ModuleDeclaration> ref) (static_constructor: (ActionDecl * C.Statement list) list) =
     // todo: what was the point of the fiileName arg?
     let fileName = IO.Path.GetFileName(sourceFilePath)
-    let _com = database.contents
     let testPath =
         let dir = Path.Combine(Path.GetDirectoryName(sourceFilePath), "build")
         let file = Path.Combine(dir, Path.GetFileName(sourceFilePath)).Replace(".fs", ".fs.c")
@@ -152,7 +151,6 @@ let writeFile (sourceFilePath: string) (includes: string list) (compiledModule: 
     sb.ToString() + "\n"
 let transformFile (_com: Fable.Compiler) (file: File) =
     // database.contents <- _com
-    print.printfn $"Database: %A{database.contents}"
     compiler.UpdateFile(_com.CurrentFile, FileCompilationResults.Empty, ())
     let context = {
         currentFile = _com.CurrentFile
@@ -196,7 +194,7 @@ let transformFile (_com: Fable.Compiler) (file: File) =
             match memberDecl.MemberRef with
             | MemberRef (ent, info) ->
                 try
-                    compiler.AddMember (database.contents.GetMember(memberDecl.MemberRef))
+                    compiler.AddMember (context.db.GetMember(memberDecl.MemberRef))
                 with ex -> printfn $"{ex}"
                 let name = Print.compiledMethodName (memberDecl, [], ent)
                 compiledModule += (name, C.Function {
@@ -206,7 +204,7 @@ let transformFile (_com: Fable.Compiler) (file: File) =
                 })
             | _ -> ()
 //            memberDeclarations += ((_com.CurrentFile, memberDecl.Name), memberDecl)
-            match database.contents.TryGetMember(memberDecl.MemberRef) with
+            match context.db.TryGetMember(memberDecl.MemberRef) with
             | Some m -> compiler.UpdateFile(context.currentFile, FileCompilationResults.AddMemberDeclaration, (memberDecl, m, Unchecked.defaultof<_>))
             | None ->
                 for i in 1..10 do print.printfn "========================================"
@@ -230,10 +228,10 @@ let transformFile (_com: Fable.Compiler) (file: File) =
                 match memberDecl.MemberRef with
                 | MemberRef(ent, info) ->
                     try
-                        compiler.AddMember (database.contents.GetMember(memberDecl.MemberRef))
+                        compiler.AddMember (context.db.GetMember(memberDecl.MemberRef))
                         // todo: if an Ident is not in the memberDecl.Body.UsedNames, i think that means it's a module var
-                        let _member = database.contents.GetMember(memberDecl.MemberRef)
-                        let attributes = _member.Attributes |> Seq.map (fun attribute -> attribute, database.contents.TryGetEntity(attribute.Entity)) |> Array.ofSeq
+                        let _member = context.db.GetMember(memberDecl.MemberRef)
+                        let attributes = _member.Attributes |> Seq.map (fun attribute -> attribute, context.db.TryGetEntity(attribute.Entity)) |> Array.ofSeq
                         let isImport = _member.Attributes |> Seq.exists (fun attr -> attr.Entity.FullName = "System.Runtime.InteropServices.DllImportAttribute")
                         let fullName = _member.DeclaringEntity.Value.FullName
                         if isImport then
@@ -268,7 +266,7 @@ let transformFile (_com: Fable.Compiler) (file: File) =
                     match memberDecl.MemberRef with
                     | MemberRef(declaringEntity, memberRefInfo) ->
                         try
-                            let m = database.contents.GetMember(memberDecl.MemberRef)
+                            let m = context.db.GetMember(memberDecl.MemberRef)
                             let accurateFullName =
                                 if m.GenericParameters.Length > 0 && not (declaringEntity.FullName.Contains "`") then
                                     declaringEntity.FullName + $"`{m.GenericParameters.Length}"
@@ -283,7 +281,7 @@ let transformFile (_com: Fable.Compiler) (file: File) =
 //                    memberDeclarations += ((fullName, memberDecl.Name), memberDecl)
                     #if !FABLE_COMPILER
                     if displayExpressions then
-                        let result = Display.memberDeclaration database.contents memberDecl
+                        let result = Display.memberDeclaration context.db memberDecl
                         ()
                     #endif
 //                    let compiledName = Print.compiledMethodName (memberDecl, [], database.contents.GetMember(memberDecl.MemberRef).DeclaringEntity.Value)
@@ -293,7 +291,7 @@ let transformFile (_com: Fable.Compiler) (file: File) =
 //                    print.printfn $"{Compiler.writeFunction sb f}"
 
                     let f = Function.transformFunc context id memberDecl.Args memberDecl.Body []
-                    match database.contents.TryGetMember(memberDecl.MemberRef) with
+                    match context.db.TryGetMember(memberDecl.MemberRef) with
                     | Some m -> compiler.UpdateFile(context.currentFile, FileCompilationResults.AddMemberDeclaration, (memberDecl, m, f))
                     | None ->
                         for i in 1..10 do print.printfn "========================================"
@@ -306,7 +304,7 @@ let transformFile (_com: Fable.Compiler) (file: File) =
                         compiledModule += fn
         | ClassDeclaration classDecl ->
             let isGeneric = classDecl.Name.Contains "$"
-            match database.contents.TryGetEntity(classDecl.Entity) with
+            match context.db.TryGetEntity(classDecl.Entity) with
             | Some ent ->
                 compiler.AddEntity(ent)
                 if not isGeneric then
@@ -323,7 +321,7 @@ let transformFile (_com: Fable.Compiler) (file: File) =
                         //     ()
                         // makeUnion ent
                     if not ent.IsFSharpUnion then
-                        let (_includes, declarations) = Function.Type.transformDeclaration context database.contents [] classDecl
+                        let (_includes, declarations) = Function.Type.transformDeclaration context context.db [] classDecl
                         includes <- _includes @ includes
                         for kv in declarations do
                             let emitTypeAttr = ent.Attributes |> Seq.tryFind _.Entity.FullName.Contains("EmitType") // = Const.emitType)
@@ -334,7 +332,7 @@ let transformFile (_com: Fable.Compiler) (file: File) =
                     match classDecl.Constructor with
                     | Some constructor ->
                         // let m = database.contents.GetMember(constructor.MemberRef)
-                        match database.contents.TryGetMember(constructor.MemberRef) with
+                        match context.db.TryGetMember(constructor.MemberRef) with
                         | Some m -> compiler.AddMember(m)
                         | _ -> ()
                         State.genericMethodDeclarations := State.genericMethodDeclarations.contents.Add ((classDecl.Entity.FullName, constructor.Name), constructor)
