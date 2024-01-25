@@ -1679,6 +1679,7 @@ let inline third (a: 'a * 'b * 'c) =
 let debugger = ref false
 let transformMember ctx (generics: (string * Type) list) (body: Expr) =
     let body = body |> applyTransformations
+    let body = flattenExpr body
     //let body = body |> walkExprInPlace replaceByrefContents
     //let body = body |> walkExprInPlace replaceEmitTypeCallArgs
 //    let body = body |> walkExprInPlace (replaceByrefArguments database.contents)
