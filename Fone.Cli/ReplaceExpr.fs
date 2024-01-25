@@ -149,6 +149,19 @@ let rec replaceTmdsCalls (e: Expr) =
             e
     | _ ->
         e
+let replaceIdentUsage (name: string) replacement (e: Expr) =
+    match e with
+    | IdentExpr ident when ident.Name = name -> replacement
+    | _ -> e
+
+let replaceCopyOfStruct (e: Expr) =
+    match e with
+    | Let(ident, value, body) when ident.Name.StartsWith "copyOfStruct" ->
+        if ident.Name <> "copyOfStruct" then
+            ()
+        body |> walkExprInPlace (replaceIdentUsage ident.Name value)
+    | _ -> e
+
 let replaceByrefContents (e: Expr) =
 //    expr |> walkExprInPlace (fun e ->
         let transformArgs (argType: Type) (arg: Expr) : Expr =
@@ -197,4 +210,4 @@ let replaceByrefContents (e: Expr) =
         | _ -> e
 //    )
 let replacements =
-    (replaceTmdsCalls >> replaceEmptyDelegatesAndLambdas >> replaceByrefContents >> replaceInputRecord)
+    (replaceTmdsCalls >> replaceEmptyDelegatesAndLambdas >> replaceByrefContents >> replaceInputRecord >> replaceCopyOfStruct)
