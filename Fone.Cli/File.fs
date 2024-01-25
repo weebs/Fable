@@ -100,14 +100,42 @@ let writeFile (sourceFilePath: string) (includes: string list) (compiledModule: 
         | _ -> ()
 
     // Create an init function for the module if there's any action/module let value declarations
-    if static_constructor.Length > 0 then
+    let initBody = [
+        for item in compiledModule.Value do
+            match item.Value with
+            | C.StaticVar info ->
+                match info.value with
+                | C.ExprAssignment expr ->
+                    yield C.Assignment (C.Expr.Emit info.name, expr)
+                | C.StatementAssignment statement ->
+                    match statement with
+                    | C.Block statements ->
+                        // todo: Block expressions work w/ clang and gcc (but not cl)
+                        // todo: yield C.Assignment (C.Expr.Emit info.name, C.BlockExpr statements)
+                        let statements = [
+                            yield! (statements |> List.take (statements.Length - 1))
+                            match statements[statements.Length - 1] with
+                            | C.Expression expr ->
+                                C.Assignment (C.Expr.Emit info.name, expr)
+                            | _ ->
+                                failwith $"%A{statements}"
+                        ]
+                        yield C.Block statements
+                    | _ -> yield statement
+                | C.ComplexAssignment -> failwith "todo"
+                | C.Default -> failwith "todo"
+            | _ -> ()
+        yield! (static_constructor |> List.map snd |> List.collect id)
+    ]
+    // if static_constructor.Length > 0 then
+    if initBody.Length > 0 then
         let init_name = fileName.Replace(".fs", "_fs")
 //            context.currentFile.Replace(IO.Path.GetDirectoryName(database.contents.ProjectFile), "").Replace("/", "").Replace("\\", "").Replace(".", "_");
         let init: C.FunctionInfo = {
             id = init_name
             return_type = C.Void
             args = []
-            body = static_constructor |> List.map snd |> List.collect id
+            body = initBody
         }
         let module_constructor = Compiler.writeFunction (SourceBuilder()) init
         sb.AppendLine(module_constructor) |> ignore
