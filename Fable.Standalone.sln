@@ -13,6 +13,18 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{45C3B0D4-AFA
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Worker", "src\fable-standalone\src\Worker\Worker.fsproj", "{0ADF4C4F-A23C-4D78-BCAB-9AA969E4AE2F}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "bench-compiler", "src\fable-standalone\test\bench-compiler\bench-compiler.fsproj", "{590CE5CB-CF62-4746-B466-00D752839994}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fable.Core", "src\Fable.Core\Fable.Core.fsproj", "{46C14042-7DE7-4E12-935E-29A6447A9BE1}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "fcs-fable", "src\fcs-fable\fcs-fable.fsproj", "{9EDBF5AA-338E-45E9-8C9E-7D31FC547FC4}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Rust.AST", "src\Fable.Transforms\Rust\AST\Rust.AST.fsproj", "{478E467C-A74E-4A0A-BC82-02BB331F1E33}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fable.Tests.C", "tests\Fable.Tests.C\Fable.Tests.C.fsproj", "{FC48F5DA-3889-44EB-851B-909C6D395ECB}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fone.Cli", "Fone.Cli\Fone.Cli.fsproj", "{2509BCE0-9AC7-457C-85FF-8B08B85E94B1}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -30,6 +42,30 @@ Global
 		{0ADF4C4F-A23C-4D78-BCAB-9AA969E4AE2F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0ADF4C4F-A23C-4D78-BCAB-9AA969E4AE2F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0ADF4C4F-A23C-4D78-BCAB-9AA969E4AE2F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{590CE5CB-CF62-4746-B466-00D752839994}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{590CE5CB-CF62-4746-B466-00D752839994}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{590CE5CB-CF62-4746-B466-00D752839994}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{590CE5CB-CF62-4746-B466-00D752839994}.Release|Any CPU.Build.0 = Release|Any CPU
+		{46C14042-7DE7-4E12-935E-29A6447A9BE1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{46C14042-7DE7-4E12-935E-29A6447A9BE1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{46C14042-7DE7-4E12-935E-29A6447A9BE1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{46C14042-7DE7-4E12-935E-29A6447A9BE1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9EDBF5AA-338E-45E9-8C9E-7D31FC547FC4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9EDBF5AA-338E-45E9-8C9E-7D31FC547FC4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9EDBF5AA-338E-45E9-8C9E-7D31FC547FC4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9EDBF5AA-338E-45E9-8C9E-7D31FC547FC4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{478E467C-A74E-4A0A-BC82-02BB331F1E33}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{478E467C-A74E-4A0A-BC82-02BB331F1E33}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{478E467C-A74E-4A0A-BC82-02BB331F1E33}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{478E467C-A74E-4A0A-BC82-02BB331F1E33}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FC48F5DA-3889-44EB-851B-909C6D395ECB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FC48F5DA-3889-44EB-851B-909C6D395ECB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FC48F5DA-3889-44EB-851B-909C6D395ECB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FC48F5DA-3889-44EB-851B-909C6D395ECB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2509BCE0-9AC7-457C-85FF-8B08B85E94B1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2509BCE0-9AC7-457C-85FF-8B08B85E94B1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2509BCE0-9AC7-457C-85FF-8B08B85E94B1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2509BCE0-9AC7-457C-85FF-8B08B85E94B1}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{28710D0C-8922-4BB2-A287-5CD49E198847} = {73195338-BB4E-46F5-A228-B6D1534F45A3}
