@@ -120,6 +120,34 @@ void {fullName}_Destructor({fullName}* this$) {{
 }}"""
                         sb.AppendLine finalizer
                         |> ignore
+                        let caseConstructors = [
+                            for (tag, case) in ent.UnionCases |> List.mapi (fun index case -> index, case) do
+                                let info = getCaseInfo case
+                                let argText (arg: Field) =
+                                    let t = transformType [] arg.FieldType
+                                    $"{t.ToTypeString()} {arg.Name}"
+                                let args = case.UnionCaseFields |> List.map argText |> String.concat ", "
+                                let assignments =
+                                    case.UnionCaseFields
+                                    |> List.map (fun field ->
+                                        $"this$->union_data.{case.Name}.{field.Name} = {field.Name};" +
+                                        (if requiresTracking [] field.FieldType then
+                                            $"\n    this$->union_data.{case.Name}.{field.Name}->__refcount++;"
+                                         else
+                                            "")
+                                    )
+                                let name = $"{fullName}_{case.Name}_ctor"
+                                $"""
+{fullName}* {name}({args}) {{
+    {fullName}* this$ = ({fullName}*)malloc(sizeof({fullName}));
+    this$->__refcount = 1;
+    this$->union_tag = {tag};
+    {assignments |> String.concat "\n    "}
+    return Runtime_autorelease(this$, {fullName}_Destructor);
+}}
+"""
+                        ]
+                        sb.AppendLine (caseConstructors |> String.concat "\n") |> ignore
                 writeUnion ent
                 //sb.AppendLine $"%A{ent}" |> ignore
             else
