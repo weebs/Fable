@@ -192,6 +192,7 @@ let writeModuleHeaderFile runtime context (projPath: string) =
     // sb.AppendLine("\n#include \"neslib.h\"\n#define true 1\n#define false 0\n\n")
     // |> ignore
     sb
+        .AppendLine("#include <stdint.h>")
         .AppendLine("#include <stdio.h>")
         .AppendLine("#include <stdbool.h>")
         .AppendLine("#include <stdlib.h>")
