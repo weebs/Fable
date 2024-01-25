@@ -236,7 +236,7 @@ let runAsync computation =
     }
     |> Async.StartImmediate
 
-let parseFiles projectFileName options =
+let parseFiles projectFileName options : _ Async =
     // parse project
     let (dllRefs, fileNames, otherOptions) = parseProject projectFileName
     let sources = fileNames |> Array.map readAllText
@@ -293,7 +293,7 @@ let parseFiles projectFileName options =
 
     // early stop for benchmarking
     if options.benchmark then
-        ()
+        async { return "" }
     else
 
         // clear cache to lower memory usage
@@ -333,6 +333,7 @@ let parseFiles projectFileName options =
             | "php" -> ".php"
             | "dart" -> ".dart"
             | "rust" -> ".rs"
+            | "c" -> ".c"
             | _ -> failwithf "Unsupported language: %s" options.language
 
         let fileExt =
@@ -354,10 +355,10 @@ let parseFiles projectFileName options =
                     let v = set dedupDic.Values |> addTargetDir
                     dedupDic.Add(importDir, v)
                     v
-
+        let mutable compiledFiles = []
         async {
             for fileName in fileNames do
-
+                printfn $"{fileName}"
                 // transform F# AST to target language AST
                 let res, ms2 = measureTime parseFable (parseRes, fileName)
                 printfn "File: %s, Fable time: %d ms" fileName ms2
@@ -414,9 +415,28 @@ let parseFiles projectFileName options =
                     writeAllText mapPath (serializeToJson writer.SourceMap)
 
                 // write the result to file
-                writeAllText outPath writer.Result
+                if options.language = "c" then
+                    compiledFiles <- (outPath, writer) :: compiledFiles
+                else writeAllText outPath writer.Result
+            if options.language = "c" then
+                // let generics = io.files |> Seq.find (fun filename -> filename.Key.Contains ".generics.")
+                let output = compiledFiles |> List.rev |> List.map snd |> List.map _.Result |> String.concat "\n"
+                let header =
+                    Fable.C.Writer.writeModuleHeaderFile
+                        Fable.C.File.runtime
+                        {
+                            Fable.C.C99Compiler.Context.currentFile = "Program.fs"
+                            Fable.C.C99Compiler.Context.idents = []
+                        }
+                        "/build/project.json"
+                let compiledOutput =
+                    $"{header.file}\n{header.generics}\n{output}"
+                    |> _.Replace("\r\n", "\n").Replace("\r", "")
+                return compiledOutput
+            else
+                return ""
         }
-        |> runAsync
+        // |> runAsync
 
 let argValue keys (args: string[]) =
     args
@@ -480,7 +500,7 @@ let run opts projectFileName outDir =
                         "--language"
                         "--lang"
                     ]
-                |> Option.map (fun _ -> "TypeScript")
+                // |> Option.map (fun _ -> "TypeScript")
                 |> Option.defaultValue "JavaScript"
             printAst = opts |> hasFlag "--printAst"
         // watch = opts |> hasFlag "--watch"
@@ -511,16 +531,33 @@ Options:
         | Some i -> Array.splitAt i argv
 
     match opts, args with
-    | _, _ when argv |> hasFlag "--help" -> printfn "%s" usage
-    | _, _ when argv |> hasFlag "--version" -> printfn "v%s" (getVersion ())
-    | _, [| projectFileName |] -> run opts projectFileName None
-    | _, [| projectFileName; outDir |] -> run opts projectFileName (Some outDir)
-    | _ -> printfn "%s" usage
+    | _, _ when argv |> hasFlag "--help" -> printfn "%s" usage |> Error
+    | _, _ when argv |> hasFlag "--version" -> printfn "v%s" (getVersion ()) |> Error
+    | _, [| projectFileName |] -> run opts projectFileName None |> Ok
+    | _, [| projectFileName; outDir |] -> run opts projectFileName (Some outDir) |> Ok
+    | _ -> printfn "%s" usage |> Error
+let runMain argv callback =
+    match parseArguments argv with
+    | Ok value ->
+        async {
+            let! text = value
+            callback text
+        } |> Async.StartImmediate
+    | Error _ -> ()
+    // |> Result.map Async.RunSynchronously
+    // |> Result.defaultValue (async { return "" })
 
 [<EntryPoint>]
 let main argv =
     try
-        parseArguments argv
+        match parseArguments argv with
+        | Error e -> ()
+        | Ok result ->
+            async {
+                let! result = result
+                printfn $"{result}"
+            }
+            |> Async.StartImmediate
     with ex ->
         printfn "Error: %s\n%s" ex.Message ex.StackTrace
 

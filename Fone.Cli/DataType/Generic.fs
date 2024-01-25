@@ -533,7 +533,7 @@ struct {tplName}* {tplName}_ctor({implArgs}) {{
         generic_implementations.Add ("", ctor_impl)
         generic_implementations.Add ("", impl)
     // Trying to sort by the name of ValueOption instances to help with declaration order
-    for option in (valueOptions |> Seq.sortBy (fun o -> (transformType [] o).ToTypeString().Split("ValueOption").Length)) do
+    for option in (valueOptions |> Seq.sortBy (fun o -> (transformType [] o).ToTypeString().Split("ValueOption".ToCharArray()).Length)) do
         let typeName = (transformType [] option).ToNameString()
         let name = "ValueOption_" + typeName
         declarations.AppendLine $"typedef struct {name} {{" |> ignore

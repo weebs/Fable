@@ -1,14 +1,14 @@
 [<AutoOpen>]
 module Imports
 
-let printfn format =
-    
-    let stack =
-        match System.Environment.StackTrace.Split("\n") with
-        | arr when arr.Length > 3 ->
-            arr |> Array.skip 2 |> Array.take 2 |> Array.map (fun i -> ("    " + (i.Split("(")[0])))
-        | _ -> [||]
-    Printf.kprintf (fun s -> System.Console.WriteLine s; for i in stack do System.Console.WriteLine i) format
+// let printfn format =
+
+    // let stack =
+    //     match System.Environment.StackTrace.Split("\n") with
+    //     | arr when arr.Length > 3 ->
+    //         arr |> Array.skip 2 |> Array.take 2 |> Array.map (fun i -> ("    " + (i.Split("(")[0])))
+    //     | _ -> [||]
+    // Printf.kprintf (fun s -> System.Console.WriteLine s; for i in stack do System.Console.WriteLine i) format
 
 type print =
     // static member printfn (format: obj)  = ()

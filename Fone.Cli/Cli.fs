@@ -9,112 +9,6 @@ open Fable.Transforms.State
 open Fone
 
 module Compiler =
-    let runtime = """
-typedef struct ref {
-    void* data;
-    int context;
-    void* f;
-    bool checked;
-} ref;
-typedef struct Runtime_pool {
-    int size;
-    int n;
-    ref* data;
-} Runtime_pool;
-
-static Runtime_pool pool = { .size = 0, .n = 0, .data = 0 };
-
-void Runtime_pool_track (void* addr, void* f) {
-    (*(unsigned char*)addr)++;
-    if (pool.n >= pool.size) {
-        pool.size = pool.size == 0 ? 1 : pool.size * 2;
-        ref* copy = pool.data;
-        //int* copyctx = pool.context_data;
-        pool.data = malloc(sizeof(ref) * pool.size);
-        //pool.context_data = malloc(sizeof(int) * pool.size);
-        for (int i = 0; i < pool.n; i++) {
-            pool.data[i] = copy[i];
-            //pool.context_data[i] = copyctx[i];
-        }
-        free(copy);
-    }
-    ref value = { .data = addr, .context = __thread_context + 1, .f = f, .checked = false };
-    pool.data[pool.n] = value;
-    //pool.context_data[pool.n] = __thread_context;
-    pool.n++;
-}
-
-void Runtime_clear_pool() {
-    int free_count = 0;
-    for (int i = 0; i < pool.n; i++) {
-        ref r = pool.data[i];
-        if (r.checked || r.data == 0) {
-            free_count++;
-            continue;
-        }
-        //printf("Checking address %p\n", r.data);
-        if (r.checked == false && r.context > __thread_context) {
-            unsigned char* p = r.data;
-            *p = *p - 1;
-            pool.data[i].checked = true;
-        }
-        unsigned char count = *(unsigned char *)r.data;
-        // todo: r.checked == true ?
-        if (count <= 0) {
-            void (*f)(void*) = r.f;
-            //printf("Autorelease freeing %p\n", r.data);
-            f(r.data);
-            free_count++;
-            pool.data[i].data = 0;
-        }
-    }
-    // todo: Only free when pool is empty
-    if (free_count == pool.n) {
-        pool.size = 0;
-        pool.n = 0;
-        free(pool.data);
-        pool.data = 0;
-    }
-}
-void Runtime_pool_end() {
-    // todo: Run destructors ?
-    pool.size = 0;
-    pool.n = 0;
-    free(pool.data);
-    pool.data = 0;
-}
-
-void* Runtime_autorelease(void* ptr, void* destructor) {
-    //printf("Autorelease %p\n", ptr);
-    unsigned char* p = ptr;
-    *p = *p - 1;
-    //void (*f)(void*) = destructor;
-    // todo: Only track when *p > 0 ?
-    Runtime_pool_track(ptr, destructor);
-    //if (*p == 0) {
-        //f(ptr);
-    //}
-    return ptr;
-}
-void Runtime_end_var_scope(void* ptr, void* destructor) {
-    unsigned char* p = ptr;
-    void (*f)(void*) = destructor;
-    *p = *p - 1;
-    if (*p <= 0) {{
-        //printf("Freeing %p\n", ptr);
-        f(ptr);
-    }}
-}
-void Runtime_swap_value(void** location, void* value, void* destructor) {
-    if (*location == value) { return; }
-    unsigned char* p = value;
-    *p = *p + 1;
-    void* oldValue = *location;
-    *location = value;
-    if (oldValue != NULL)
-        Runtime_end_var_scope(oldValue, destructor);
-}
-"""
     let options: Fable.CompilerOptions = {
         TypedArrays = true
         ClampByteArrays = false
@@ -206,7 +100,7 @@ void Runtime_swap_value(void** location, void* value, void* destructor) {
                 let c_file = Fable.C.File.transformFile com transformedFile
                 Fable.C.File.writeFile filePath c_file.includes c_file.compiledModule c_file.static_constructor
         |]
-        let header = Fable.C.Writer.writeModuleHeaderFile runtime { currentFile = ""; idents = [] } "/build/project.json"
+        let header = Fable.C.Writer.writeModuleHeaderFile Fable.C.File.runtime { currentFile = "Program.fs"; idents = [] } "/build/project.json"
         let files = io.files
         let generics = files |> Seq.find (fun kv -> kv.Key.Contains ".generics.")
         let output = compiledFiles |> String.concat "\n"
@@ -219,31 +113,9 @@ void Runtime_swap_value(void** location, void* value, void* destructor) {
 
 [<EntryPoint>]
 let main argv =
-    let projText = """
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
-    <RollForward>Major</RollForward>
-    <LangVersion>Preview</LangVersion>
-  </PropertyGroup>
-  <ItemGroup>
-
-<!--    <Compile Include="Generics.fs" />-->
-<!--    <Compile Include="QuickTest.fs" />-->
-    <Compile Include="Main.fs" />
-    <Content Include="quicktest.fs.js" />
-    <Content Include="*.fs.h" />
-    <Content Include="*.fs.c" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="../Fable.Core/Fable.Core.fsproj" />
-  </ItemGroup>
-</Project>
-"""
     let testsProjFile =
-        // Path.Join(__SOURCE_DIRECTORY__, "../tests/Fable.Tests.C/Fable.Tests.C.fsproj")
-        Path.Join(__SOURCE_DIRECTORY__, "../src/quicktest/Quicktest.fsproj")
+        Path.Join(__SOURCE_DIRECTORY__, "../tests/Fable.Tests.C/Fable.Tests.C.fsproj")
+        // Path.Join(__SOURCE_DIRECTORY__, "../src/quicktest/Quicktest.fsproj")
         // "C:/Users/Dave/projects/Fable/src/quicktest/Quicktest.fsproj"
     // File.WriteAllText("/Quicktest.fsproj", projText)
     // let quicktest = Path.Join(__SOURCE_DIRECTORY__, "../tests/Fable.Tests.C/Fable.Tests.C.fsproj")

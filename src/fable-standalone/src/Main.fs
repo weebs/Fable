@@ -390,6 +390,11 @@ type RustResult(ast: Rust.AST.Types.Crate, errors) =
     interface IFableResult with
         member _.FableErrors = errors
 
+type CResult(ast: Fable.C.File.CompiledAst, errors) =
+    member _.Ast = ast
+    interface IFableResult with
+        member _.FableErrors = errors
+
 let transformToFableAst (com: Compiler) : Fable.File =
     let fileName = com.CurrentFile
 
@@ -431,6 +436,11 @@ let transformToTargetAst
     | Rust ->
         let ast = Rust.Fable2Rust.Compiler.transformFile com fableAst
         upcast RustResult(ast, errors)
+    | Plugin ->
+        let cache = Fable.C.Helpers.database.contents
+        cache.SaveFile com fableAst
+        let ast = Fable.C.File.transformFile com fableAst
+        upcast CResult(ast, errors)
 
 let compileToTargetAst
     (results: IParseAndCheckResults)
@@ -493,9 +503,11 @@ let getLanguage (language: string) =
     | "php" -> Php
     | "dart" -> Dart
     | "rust" -> Rust
+    | "c" -> Plugin
     | _ -> failwithf "Unsupported language: %s" language
 
 let init () =
+    Fable.C.Helpers.database.contents <- Fone.Database.FableCompilationCache()
     { new IFableManager with
         member _.Version = Fable.Literals.VERSION
 
@@ -621,6 +633,14 @@ let init () =
             | :? PhpResult as php -> PhpPrinter.run writer php.Ast
             | :? PythonResult as python -> PythonPrinter.run writer python.Ast
             | :? RustResult as rust -> Rust.RustPrinter.run writer rust.Ast
+            | :? CResult as c ->
+                let c_file = c.Ast
+                let files = io.files
+                let filePath = "Program.fs"
+                let output = Fable.C.File.writeFile filePath c_file.includes c_file.compiledModule c_file.static_constructor
+                async {
+                    do! writer.Write output
+                }
             | _ -> failwith "Unexpected Fable result"
 
         member _.FSharpAstToString

@@ -53,6 +53,24 @@
     <Compile Include="../../Fable.Transforms/Rust/RustPrinter.fs" />
     <Compile Include="../../Fable.Transforms/Rust/Fable2Rust.fs" />
     <Compile Include="../../Fable.Transforms/State.fs" />
+      <Compile Include="../../../Fone.Cli/Imports.fs" />
+      <Compile Include="../../../Fone.Cli/SourceBuilder.fs" />
+      <Compile Include="../../../Fone.Cli/AST.fs" />
+      <Compile Include="../../../Fone.Cli/C99Compiler.fs" />
+      <Compile Include="../../../Fone.Cli/Compiler.fs" />
+      <Compile Include="../../../Fone.Cli/Helpers.fs" />
+      <Compile Include="../../../Fone.Cli/Print.fs" />
+      <Compile Include="../../../Fone.Cli/ReplaceExpr.fs" />
+      <Compile Include="../../../Fone.Cli/Transforms.C.fs" />
+      <Compile Include="../../../Fone.Cli/DataType\State.fs" />
+      <Compile Include="../../../Fone.Cli/DataType\DataType.fs" />
+      <Compile Include="../../../Fone.Cli/DataType\Headers.fs" />
+      <Compile Include="../../../Fone.Cli/DataType\Function.fs" />
+      <Compile Include="../../../Fone.Cli/DataType\Generic.fs" />
+      <Compile Include="../../../Fone.Cli/Program.fs" />
+      <Compile Include="../../../Fone.Cli/File.fs" />
+      <Compile Include="../../../Fone.Cli/Database.fs" />
+<!--      <Compile Include="../../../Fone.Cli/Cli.fs" />-->
 
     <!-- Fable.Standalone -->
     <Compile Include="Interfaces.fs"/>

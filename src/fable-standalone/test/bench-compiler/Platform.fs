@@ -123,12 +123,12 @@ module JS =
     // type IPerformance =
     //     abstract now: unit -> float
 
-    let fs: IFileSystem = importAll "fs"
-    let os: IOperSystem = importAll "os"
-    let proc: IProcess = importAll "process"
-    let path: IPath = importAll "path"
+    let fs: IFileSystem = emitJsExpr [||] "window.fs" // importAll "fs"
+    let os: IOperSystem = emitJsExpr [||] "window.os" //importAll "os"
+    let proc: IProcess = emitJsExpr [||] "window.proc" // importAll "process"
+    let path: IPath = emitJsExpr [||] "window.path" // importAll "path"
     // let glob: IGlob = importAll "glob"
-    let util: IUtil = importAll "./util.js"
+    let util: IUtil = emitJsExpr [||] "window.util" // importAll "./util.js"
 // let performance: IPerformance = importMember "perf_hooks"
 
 let readAllBytes (filePath: string) = JS.fs.readFileSync (filePath)

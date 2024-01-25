@@ -111,7 +111,7 @@ module CompilationCache =
         | TryGetEntity of EntityRef * AsyncReplyChannel<Entity option>
         | GetMember of MemberRef * AsyncReplyChannel<MemberFunctionOrValue>
         | TryGetMember of MemberRef * AsyncReplyChannel<MemberFunctionOrValue option>
-        | QueueSize of AsyncReplyChannel<int>
+        // | QueueSize of AsyncReplyChannel<int>
 open CompilationCache
 let inline print_debug (s: string) = ()
 let refKey ref =
@@ -165,13 +165,13 @@ type FableCompilationCache() as this =
             | TryGetEntity (ref, channel) -> channel.Reply <| compiler.TryGetEntity ref
             | GetMember (ref, channel) -> channel.Reply <| compiler.GetMember ref
             | TryGetMember (ref, channel) -> channel.Reply <| compiler.TryGetMember ref
-            | QueueSize channel -> channel.Reply(inbox.CurrentQueueLength)
+            // | QueueSize channel -> channel.Reply(inbox.CurrentQueueLength)
     })
     member val n : int = 0 with get, set
     member this.Update(update: Parsing.Message) =
         agent.Post (Update update)
-    member this.QueueSize =
-        agent.PostAndReply QueueSize
+    // member this.QueueSize =
+        // agent.PostAndReply QueueSize
     override this.Finalize() =
         running <- false
     interface Helpers.Type.ICompiler with
@@ -193,4 +193,22 @@ type FableCompilationCache() as this =
         member this.TryGetMember(ref) =
             membersByRef.TryFind (refKey ref)
             |> Option.map (fun (_, _, _, item) -> item)
+        member this.SaveFile (com: Fable.Compiler) file =
+            let addMethod (decl: Fable.AST.Fable.MemberDecl) =
+                match decl.MemberRef with
+                | MemberRef(declaringEntity, info) ->
+                    let ent = com.GetEntity declaringEntity
+                    let mem = ent.TryFindMember info
+                    this.Update (Parsing.AddMember (decl.MemberRef, file, ent, mem.Value, decl))
+                | _ -> ()
+            for decl in file.Declarations do
+                match decl with
+                | Fable.AST.Fable.ClassDeclaration decl ->
+                    this.Update (Parsing.AddEntity (file, com.GetEntity decl.Entity))
+                    match decl.Constructor with
+                    | Some ctor -> addMethod ctor
+                    | None -> ()
+                | Fable.AST.Fable.MemberDeclaration decl ->
+                    addMethod decl
+                | _ -> ()
     // end

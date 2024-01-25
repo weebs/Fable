@@ -141,6 +141,7 @@ let valueToString (value: C.ValueKind) : string =
             |> ignore
         sb.AppendLine($"}}") |> ignore
         sb.ToString()
+    | C.ValueKind.Int i -> string i
     | _ ->
         // Most of the time we can call toString on the second param (ex: 248.ToString() -> "248")
         (Microsoft.FSharp.Reflection.FSharpValue.GetUnionFields(value, typeof<C.ValueKind>) |> snd)[0] |>

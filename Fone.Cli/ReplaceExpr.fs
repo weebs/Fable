@@ -132,7 +132,7 @@ let rec replaceTmdsCalls (e: Expr) =
              ident.Name.Contains "__set_" &&
              info.ThisArg.IsSome then
             let fieldName =
-                let endofstring = (ident.Name.Split "__set_")[1]
+                let endofstring = (ident.Name.Split ("__set_".ToCharArray()))[1]
                 endofstring.Substring(0, endofstring.LastIndexOf "_")
             Set (info.ThisArg.Value, FieldSet fieldName, info.Args[0].Type, walkExprInPlace replacements info.Args[0], range)
         elif ident.Name.StartsWith "Tmds_Linux_LibC" then
