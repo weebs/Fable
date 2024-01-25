@@ -359,6 +359,7 @@ let writeModule (fileName: string) (_module: CompiledAst) : string =
 let writeNesModule (fileName: string) (_module: CompiledAst) : string =
     writeModule fileName _module
     |> fun text -> text.Replace("
+#include <stdint.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>", "")

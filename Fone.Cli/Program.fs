@@ -165,6 +165,7 @@ let appendModuleIncludes (projectFile: string) (sb: StringBuilder) =
         IO.Path.GetFileNameWithoutExtension(projectFile) + ".h"
     // sb.AppendLine($"#include \"{projHeaderName}\"") |> ignore
     sb
+        .AppendLine("#include <stdint.h>")
         .AppendLine("#include <stdio.h>")
         .AppendLine("#include <stdbool.h>")
         .AppendLine("#include <stdlib.h>")

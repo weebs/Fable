@@ -22,6 +22,7 @@ module rec C =
         | UInt16
         | Int64
         | UInt64
+        | UIntptr_t
         | Float
         | Double
         | Bool
@@ -37,6 +38,7 @@ module rec C =
         member this.ToTypeString() =
             match this with
             | Void -> "void"
+            | UIntptr_t -> "uintptr_t"
             | Byte -> "unsigned char"
             | Int -> "int"
             | Int64 -> "long"
@@ -60,6 +62,7 @@ module rec C =
         member this.ToNameString() =
             match this with
             | Void -> "void"
+            | UIntptr_t -> "uintptr_t"
             | Byte -> "byte"
             | Int -> "int"
             | Int16 -> "short"

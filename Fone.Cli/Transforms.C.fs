@@ -649,11 +649,21 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
     | Import(importInfo, ``type``, sourceLocationOption) ->
         let libraryFile = IO.Path.GetFileNameWithoutExtension (Array.last (importInfo.Path.Split(char "/"))) + ".c"
         match (importInfo.Selector, libraryFile) with
+        | "toNativeInt", "BigInt.c" ->
+            C.TypeCast (C.Ptr C.Void, transformExpr ctx generics callInfo.Args[0])
+        | "toUNativeInt", "BigInt.c" ->
+            C.TypeCast (C.UIntptr_t, transformExpr ctx generics callInfo.Args[0])
+        | "fromUNativeInt", "BigInt.c" ->
+            C.TypeCast (C.Ptr C.Void, transformExpr ctx generics callInfo.Args[0])
+        | "fromInt32", "BigInt.c" ->
+            C.TypeCast (C.Int64, transformExpr ctx generics callInfo.Args[0])
         | "identityHash", "Util.c" ->
             let t = transformType generics callInfo.Args[0].Type
             let e = transformExpr ctx generics callInfo.Args[0]
             // todo: Call GetHashCode for objects / non-primitives
-            C.Call ("System_Hash_hashValue", [ C.Unary (C.Ref, e); C.Call ("sizeof", [ C.Expr.Emit (t.ToTypeString()) ]) ])
+            C.Call ("Hash_hashValue", [ C.Unary (C.Ref, e); C.Call ("sizeof", [ C.Expr.Emit (t.ToTypeString()) ]) ])
+            // C.Call ("Hash_hashValue", [ C.TypeCast (C.Ptr C.Void, e); C.Call ("sizeof", [ C.Expr.Emit (t.ToTypeString()) ]) ])
+            // C.Call ("Hash_hashValue", [ C.TypeCast (C.Ptr C.Void, e); C.Call ("sizeof", [ C.Expr.Emit (t.ToTypeString()) ]) ])
         | "addToDict", "MapUtil.c" ->
             match callInfo.ThisArg.Value.Type with
             | Fable.DeclaredType(entityRef, genericArgs) ->

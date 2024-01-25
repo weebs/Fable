@@ -573,7 +573,7 @@ let compileFile (_com: Fable.Compiler) (result: {| compiled_module: Map<_,_>; in
     let _sb = StringBuilder()
     // Import includes
     let compiled_module = result.compiled_module
-    let includes = [ "stdio.h"; "stdlib.h"; "stdbool.h"; "string.h" ]
+    let includes = [ "stdint.h"; "stdio.h"; "stdlib.h"; "stdbool.h"; "string.h" ]
     for i in includes do
         _sb.AppendLine($"#include <{i}>")
         |> ignore
