@@ -242,7 +242,8 @@ let rec transformType (generics: (string * Type) list) (t: Fable.Type) =
                         if ent.IsValueType then t
                         else C.Ptr t
                 | None ->
-                    printfn $"transformType: Couldn't find entity: {entityRef.FullName}\n{Environment.StackTrace}"
+                    printfn $"transformType: Couldn't find entity: {entityRef.FullName}"
+                    // printfn $"transformType: Couldn't find entity: {entityRef.FullName}\n{Environment.StackTrace}"
 //                    let t = C.UserDefined (Print.compiledTypeName (args, entityRef), ent.IsValueType, Some ent)
 //                    if ent.IsValueType then t
 //                    else C.Ptr t
@@ -262,7 +263,8 @@ let rec transformType (generics: (string * Type) list) (t: Fable.Type) =
                 (loop (depth + 1) generics t)
             | _ ->
                 // C.Generic name
-                C.EmitType $"Type<{name}> (Generics: %A{generics})\n{Environment.StackTrace}\n"
+                // C.EmitType $"Type<{name}> (Generics: %A{generics})\n{Environment.StackTrace}\n"
+                C.EmitType $"Type<{name}> (Generics: %A{generics})\n"
 //                C.EmitType $"void* /* %A{t} */"
 //                C.Void
 //                failwith "Unable to find generic param type"
