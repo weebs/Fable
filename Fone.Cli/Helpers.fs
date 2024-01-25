@@ -476,6 +476,11 @@ module Query =
     //        | Delegate _
             | TryCatch _
             | Lambda _ -> false
+            | Operation(operationKind, tags, ``type``, sourceLocationOption) ->
+                match operationKind with
+                | Unary(operator, operand) -> isSimpleExpr operand
+                | Binary(operator, left, right) -> isSimpleExpr left && isSimpleExpr right
+                | Logical(operator, left, right) -> isSimpleExpr left && isSimpleExpr right
             | IfThenElse (guard, thenExpr, elseExpr, _range) ->
                 isSimpleExpr guard && isSimpleExpr thenExpr && isSimpleExpr elseExpr
             | Call(callee, callInfo, ``type``, sourceLocationOption) ->
