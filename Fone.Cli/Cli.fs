@@ -100,7 +100,14 @@ module Compiler =
                 let c_file = Fable.C.File.transformFile com transformedFile
                 Fable.C.File.writeFile filePath c_file.includes c_file.compiledModule c_file.static_constructor
         |]
-        let header = Fable.C.Writer.writeModuleHeaderFile Fable.C.File.runtime { currentFile = "Program.fs"; idents = [] } "/build/project.json"
+        let header =
+            Fable.C.Writer.writeModuleHeaderFile
+                Fable.C.File.runtime
+                {
+                    currentFile = "Program.fs"; idents = []
+                    db = Fable.C.Helpers.database.contents
+                }
+                "/build/project.json"
         let files = io.files
         let generics = files |> Seq.find (fun kv -> kv.Key.Contains ".generics.")
         let output = compiledFiles |> String.concat "\n"

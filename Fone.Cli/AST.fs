@@ -1,5 +1,14 @@
 module Fable.C.AST
 
+module Type =
+    open Fable.AST.Fable
+    type ICompiler =
+        abstract member TryGetEntity: EntityRef -> Entity option
+        abstract member TryGetMember: MemberRef -> MemberFunctionOrValue option
+        abstract member GetEntity: EntityRef -> Entity
+        abstract member GetMember: MemberRef -> MemberFunctionOrValue
+        abstract member SaveFile: Fable.Compiler -> Fable.AST.Fable.File -> unit
+
 [<RequireQualifiedAccess>]
 module rec C =
     // todo: Storage classes:  https://www.tutorialspoint.com/cprogramming/c_storage_classes.htm

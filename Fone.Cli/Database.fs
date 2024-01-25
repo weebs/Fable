@@ -131,7 +131,7 @@ type FableCompilationCache() as this =
     let mutable entityRefs = Map.empty
     let mutable running = true
     let agent = MailboxProcessor<CompilationCache.Message>.Start(fun inbox -> async {
-        let compiler = this :> Helpers.Type.ICompiler
+        let compiler = this :> AST.Type.ICompiler
         while running do
             let! msg = inbox.Receive()
             match msg with
@@ -174,7 +174,7 @@ type FableCompilationCache() as this =
         // agent.PostAndReply QueueSize
     override this.Finalize() =
         running <- false
-    interface Helpers.Type.ICompiler with
+    interface AST.Type.ICompiler with
         member this.GetEntity(ref) =
             try entitiesByRef[ref]
             with ex ->

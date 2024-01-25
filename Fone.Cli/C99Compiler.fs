@@ -13,6 +13,7 @@ open Fable.AST.Fable
 type Context = {
     currentFile: string
     idents: string list
+    db: AST.Type.ICompiler
 }
 
 type FileCompilationResults = {
@@ -39,7 +40,7 @@ module FileCompilationResults =
 // http://www.fssnip.net/1V/title/Clojures-Atoms
 type Atom<'T when 'T : not struct>(value : 'T) =
     let mutable atomContents = value
-    
+
     let rec swap f =
         let currentValue = atomContents
         let resultingValue = f currentValue
@@ -50,11 +51,11 @@ type Atom<'T when 'T : not struct>(value : 'T) =
         if obj.ReferenceEquals(result, currentValue) then resultingValue
         else Thread.SpinWait 20; swap f
         #endif
-        
+
     member self.Value with get() = atomContents
     member self.Swap (f : 'T -> 'T) = swap f
 
-        
+
 
 type MyCompiler() =
     let mutable results: Map<string, FileCompilationResults> = Map.empty

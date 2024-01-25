@@ -618,14 +618,6 @@ let pullGenericTypeUsages generics (com: Type.ICompiler) (t: Type) : GenericInte
 //     abstract member CurrentFile: string
 // let com: ICompiler ref = ref Unchecked.defaultof<ICompiler>
 
-module Type =
-    open Fable.AST.Fable
-    type ICompiler =
-        abstract member TryGetEntity: EntityRef -> Entity option
-        abstract member TryGetMember: MemberRef -> MemberFunctionOrValue option
-        abstract member GetEntity: EntityRef -> Entity
-        abstract member GetMember: MemberRef -> MemberFunctionOrValue
-        abstract member SaveFile: Fable.Compiler -> Fable.AST.Fable.File -> unit
 // let com: Fable.Compiler ref = ref Unchecked.defaultof<Fable.Compiler>
 // let com: Type.ICompiler ref = ref Unchecked.defaultof<_>
 let database: Type.ICompiler ref = ref Unchecked.defaultof<_>
