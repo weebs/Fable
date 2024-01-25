@@ -791,7 +791,28 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
 //        C.Expr.Emit <| $"// %A{expr} %A{kind}".Replace("\n", "")
     | _ ->
         C.Expr.Emit $"(void*)0 /* {Print.printComment expr} */"
-
+let flattenExpr (expr: Expr) : Expr =
+    if Query.isSimpleExpr expr then expr
+    else
+        match expr with
+        | Fable.Call(callee, callInfo, ``type``, sourceLocationOption) ->
+            let rec loop idents (args: Expr list) =
+                match args with
+                | [] ->
+                    Fable.Call (callee, { callInfo with Args = List.map Fable.IdentExpr idents }, ``type``, sourceLocationOption) // call the function w/ the list of idents as the args
+                | arg::args ->
+                    let ident: Ident = {
+                        // todo: Generate name based on range
+                        Name = $"arg_{idents.Length + 1}"
+                        Type = arg.Type
+                        IsMutable = false
+                        IsThisArgument = false
+                        IsCompilerGenerated = true
+                        Range = arg.Range
+                    }
+                    Fable.Let (ident, flattenExpr arg, loop (ident :: idents) args)
+            loop [] callInfo.Args
+        | expr -> expr
 let inline tryAs (f: 'a -> 't) (t: 't) : 'a option =
     if FSharpType.IsUnion(typeof<'t>) then
         let caseInfo = FSharpType.GetUnionCases(typeof<'t>)
@@ -840,7 +861,11 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
         | Operation(operationKind, tags, ``type``, _sourceLocationOption) ->
             transformOperation ctx generics operationKind ``type``
         | Call(callee, callInfo, _type, _sourceLocationOption) ->
-            transformCall ctx generics callInfo callee expr
+            // todo: transforming calls with complex args
+            if not (Query.isSimpleExpr expr) then
+                transformCall ctx generics callInfo callee expr
+            else
+                transformCall ctx generics callInfo callee expr
         | Value(StringTemplate(exprOption, parts, values), sourceLocation) ->
             let sprintf_args = transformStringTemplate ctx database.contents generics parts values
             let sprintf_args = transformStringTemplate ctx database.contents generics parts values
