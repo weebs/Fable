@@ -368,7 +368,8 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
                 |> List.zip caseInfo.UnionCaseFields
                 |> List.map snd |> List.map (transformExpr ctx generics)
             let c_expr = C.Call ($"{union_name}_{caseInfo.Name}_ctor", values) // C.Expr.Emit $"{{ .{caseInfo.Name} = {{ {values} }} }}" ])
-            C.ValueKind.Emit (Compiler.writeExpression c_expr)
+            C.ValueKind.UnionConstructorCall c_expr
+            // C.ValueKind.Emit (Compiler.writeExpression c_expr)
     | Fable.NewRecord(values, entityRef, _genArgs) ->
 //        let exprTypes = values |> List.map (fun v -> v.IsSimpleExpr)
 //        let isSimpleExpr = exprTypes |> List.forall (fun simple -> simple = true)

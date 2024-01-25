@@ -96,6 +96,8 @@ let valueToString (value: C.ValueKind) : string =
     | C.ValueKind.Void -> ""
     | C.ValueKind.Bool b ->
         b.ToString().ToLower()
+    | C.ValueKind.UnionConstructorCall expr ->
+        writeExpression expr
     | C.ValueKind.Compound (fieldValues, entity, fieldInfos, generics) ->
         let fields =
             if entity.IsValueType then List.zip fieldValues fieldInfos

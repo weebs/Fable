@@ -218,6 +218,7 @@ module rec C =
         | CStr of string
         | Ptr of uint64
         | Emit of string
+        | UnionConstructorCall of Expr
         | Compound of Expr list * Fable.AST.Fable.Entity * (string * Type) list * genericArgs: (Type list)
         | AnonymousCompound of values: Expr list * ent: Fable.AST.Fable.Entity * genericArgs: Type list
         | ObjectCompound of structName: string * values: Expr list
