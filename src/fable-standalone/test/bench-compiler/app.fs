@@ -427,6 +427,7 @@ let parseFiles projectFileName options : _ Async =
                         {
                             Fable.C.C99Compiler.Context.currentFile = "Program.fs"
                             Fable.C.C99Compiler.Context.idents = []
+                            db = Fable.C.Helpers.database.contents
                         }
                         "/build/project.json"
                 let compiledOutput =
