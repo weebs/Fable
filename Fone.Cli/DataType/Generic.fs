@@ -8,6 +8,7 @@ open System.Collections
 open Fable
 open Fable.AST
 open Fable.AST.Fable
+open Fable.C.Helpers
 open Fable.Transforms.FSharp2Fable
 
 open Fable.C
@@ -106,6 +107,10 @@ let generateGenericImplementations context path projHeaderName : string * Generi
     let _ = () //generic_classes_used |> List.map fst |> List.choose
 
     let mutable generic_interactions = findGenericInteractionsFromNonGenerics path projHeaderName
+    generic_interactions <- generic_interactions @ closureTypes.Value
+    closureTypes.Value <- []
+    // for g in closureTypes.Value do
+    //     generic_interactions <
 
     let added_types = Generic.List<string>()
     let added_functions = Generic.List<string>()
@@ -121,6 +126,7 @@ let generateGenericImplementations context path projHeaderName : string * Generi
                 match i with
                 | Instantiation(_, genericParams) -> List.forall (fun p -> match p with | GenericParam _ -> false | _ -> true) genericParams
                 | MethodCall(_, _, genericParams) -> List.forall (fun p -> match p with | GenericParam _ -> false | _ -> true) genericParams
+                | Func _ | Closure _ -> true
                 | ValueOption _ | Tupl _ -> true
             )
             |> List.distinctBy (fun (i,_) ->
@@ -134,12 +140,165 @@ let generateGenericImplementations context path projHeaderName : string * Generi
                         tupleName [] args
                     | GenericInteraction.ValueOption arg ->
                         (transformType [] arg).ToTypeString()
+                    | GenericInteraction.Closure (captured, args, _return) ->
+                        // let captured = captured |> List.map (transformType []) |> List.map _.ToNameString() |> String.concat "_"
+                        // let args = args |> List.map (transformType []) |> List.map _.ToNameString() |> String.concat "_"
+                        // let _return = _return |> transformType [] |> _.ToNameString()
+                        // $"Closure__{captured}_{args}_{_return}"
+                        // (captured @ args @ [ _return ]) |> List.map (transformType [] >> _.ToNameString()) |> String.concat "\n"
+                        // todo: Managed to get overlap between closure type names
+                        Print.closureTypeName (transformType [], captured, args, _return)
+                    | GenericInteraction.Func (args, _return) ->
+                        // let args = args |> List.map (transformType []) |> List.map _.ToNameString() |> String.concat "_"
+                        // let _return = _return |> transformType [] |> _.ToNameString()
+                        // $"Func__{args}_{_return}"
+                        Print.funcTypeName (transformType [], args, _return)
                 with ex ->
                     ""
             ) // |> List.toArray
         generic_interactions <- []
         for usage in temp do
             match fst usage with
+            | Closure(captured, types, ``return``) ->
+                // added_types
+                let capturedArgsTypes = captured |> List.map (transformType []) |> List.map _.ToTypeString()
+                let invokeArgsTypes = types |> List.map (transformType []) |> List.map _.ToTypeString()
+                let invokeParamsText =
+                    [| for i in 0..(invokeArgsTypes.Length - 1) do $"{invokeArgsTypes[i]} arg_{i}" |]
+                    |> String.concat ", "
+                let callArgs =
+                    [| for i in 0..invokeArgsTypes.Length - 1 do $"arg_{i}" |]
+                    |> String.concat ", "
+                let capturedArgs =
+                    [| for i in 0..capturedArgsTypes.Length - 1 do $"var_{i}" |]
+                    |> String.concat ", "
+                let capturedParamsText =
+                    [| for i in 0..capturedArgsTypes.Length - 1 do $"{captured[i] |> transformType [] |> _.ToTypeString()} var_{i}" |]
+                    |> String.concat ", "
+                let variables =
+                    [|
+                    for i in 0..capturedArgsTypes.Length - 1 do
+                        if requiresTracking [] captured[i] then
+                            $"{capturedArgsTypes[i]} var_{i} = ({capturedArgsTypes[i]})this$->capturedArgs[{i}];"
+                        else
+                            $"{capturedArgsTypes[i]} var_{i} = *({capturedArgsTypes[i]}*)this$->capturedArgs[{i}];"
+                    |]
+                    |> String.concat "\n    "
+                let ctorCapturing =
+                    [|
+                    for i in 0..captured.Length - 1 do
+                        let t = transformType [] captured[i]
+                        if requiresTracking [] captured[i] then
+                            yield $"{t.ToTypeString()} ptr_{i} = var_{i};"
+                            yield $"var_{i}->__refcount++;"
+                        else
+                            yield $"{t.ToTypeString()}* ptr_{i} = malloc(sizeof({t.ToTypeString()}));"
+                            yield $"*ptr_{i} = var_{i};"
+                        yield $"this$->capturedArgs[{i}] = (void*)ptr_{i};"
+                    |]
+                    |> String.concat "\n    "
+                let destructorStatements =
+                    [|
+                        for i in 0..captured.Length - 1 do
+                            if requiresTracking [] captured[i] then
+                                let t = transformType [] captured[i]
+                                match t with
+                                | Fable.C.AST.C.Ptr t ->
+                                    $"Runtime_end_var_scope(this$->capturedArgs[{i}], {t.ToNameString()}_Destructor);"
+                                | _ ->
+                                    $"Runtime_end_var_scope(this$->capturedArgs[{i}], {t.ToNameString()}_Destructor);"
+                            else
+                                $"free(this$->capturedArgs[{i}]);"
+                    |]
+                    |> String.concat "\n    "
+                let returnType = transformType [] ``return`` |> _.ToTypeString()
+                let ptrType =
+                    let argsTypesStrings =
+                        capturedArgsTypes @ invokeArgsTypes
+                    $"""{returnType} (*)({argsTypesStrings |> String.concat ", "})"""
+                let typeName = Print.closureTypeName (transformType [], captured, types, ``return``)
+                let decl = $"""
+typedef struct {typeName} {{
+    // unsigned char __refcount;
+    void** capturedArgs;
+    void* fp;
+}} {typeName};
+                """
+                // todo: type safety for FP
+                let impl = $"""
+{typeName}* {typeName}_ctor({capturedParamsText}, void* fp) {{
+    {typeName}* this$ = ({typeName}*)malloc(sizeof({typeName}));
+    this$->capturedArgs = malloc(sizeof(void*) * {captured.Length});
+    {ctorCapturing}
+    this$->fp = fp;
+}}
+void {typeName}_Destructor(void* data) {{
+    {typeName}* this$ = ({typeName}*)data;
+    {destructorStatements}
+    free(this$->capturedArgs);
+    free(this$);
+}}
+{returnType} {typeName}_Invoke(void* closure, {invokeParamsText}) {{
+    {typeName}* this$ = ({typeName}*)closure;
+    {variables}
+    return (({ptrType})this$->fp)({capturedArgs}, {callArgs});
+}}
+                """
+                generic_implementations.Add(decl, impl)
+            | Func(types, ``return``) ->
+                let typeName = Print.funcTypeName (transformType [], types, ``return``)
+                let returnType = transformType [] ``return``
+                let returnTypeName = returnType |> _.ToTypeString()
+                let argsTypes = types |> List.map (transformType [])
+                let argsTypesStrings = argsTypes |> List.map _.ToTypeString()
+                let paramsText =
+                    [| for i in 0..(argsTypesStrings.Length - 1) do $"{argsTypesStrings[i]} arg_{i}" |]
+                    |> String.concat ", "
+                let callArgs =
+                    [| for i in 0..argsTypesStrings.Length - 1 do $"arg_{i}" |]
+                    |> String.concat ", "
+                let ptrType0 =
+                    $"""{returnTypeName} (*)({argsTypesStrings |> String.concat ", "})"""
+                let ptrType1 =
+                    $"""{returnTypeName} (*)({("void*" :: argsTypesStrings) |> String.concat ", "})"""
+                let decl = $"""
+typedef struct {typeName} {{
+    unsigned char __refcount;
+    int tag;
+    void* fp;
+    void* data;
+    void* data_destructor;
+}} {typeName};
+                """
+                // todo: autorelease?
+                let impl = $"""
+void {typeName}_Destructor({typeName}* this$) {{
+    if (this$->tag == 1) {{
+        ((void (*)(void*))this$->data_destructor)(this$->data);
+    }}
+    free(this$);
+}}
+{typeName}* {typeName}_ctor(int tag, void* fp, void* data, void* data_destructor) {{
+    {typeName}* this$ = malloc(sizeof({typeName}));
+    this$->__refcount = 1;
+    this$->fp = fp;
+    this$->tag = tag;
+    if (tag == 1) {{
+        this$->fp = fp;
+        this$->data = data;
+        this$->data_destructor = data_destructor;
+    }}
+    return Runtime_autorelease(this$, {typeName}_Destructor);
+}}
+{returnTypeName} {typeName}_Invoke({typeName}* this$, {paramsText}) {{
+    if (this$->tag == 0) {{
+        return (({ptrType0})this$->fp)({callArgs});
+    }} else {{
+        return (({ptrType1})this$->fp)(this$->data, {callArgs});
+    }}
+}}
+"""
+                generic_implementations.Add(decl, impl)
             | Tupl (args, is_struct) ->
                 tuples.Add args
             | ValueOption arg ->
@@ -431,9 +590,9 @@ void {typeName}_Destructor({typeName}* this$) {{
                             let typeName = Print.compiledTypeName(List.map (transformType generics) genericParams, declaringEntity)
                             //let args = (member_declaration.Args |> List.map (fun i -> i.Name, transformType generics i.Type))
                             let (function_id, type_sig, function_info) = Function.Generics.addMethodImplementation context generics ent.FullName ent.IsValueType genericParams fableMethodName member_declaration
-                            let toCompile = Function.gatherAnonymousFunctions context member_declaration.Body
-                            if toCompile.Length > 0 then
-                                ()
+                            // let toCompile = Function.gatherAnonymousFunctions context member_declaration.Body
+                            // if toCompile.Length > 0 then
+                            //     ()
                             if not (added_functions.Contains(function_id)) then
                                 generic_implementations.Add(type_sig, Compiler.writeFunction (SourceBuilder()) function_info)
                                 added_functions.Add(function_id)

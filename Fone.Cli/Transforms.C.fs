@@ -194,15 +194,23 @@ let rec transformType (generics: (string * Type) list) (t: Fable.Type) =
             | ImmutableArray -> failwith "todo"
     //        C.Ptr (C.EmitType $"System_Array__{(transformType generics genericArg).ToNameString()}")
     //        C.Ptr (transformType generics genericArg)
-        | Fable.Type.DelegateType(argTypes, returnType) ->
-            C.FunctionPtr (List.map (transformType generics) argTypes, transformType generics returnType)
+        // todo
+        // | Fable.Type.DelegateType(argTypes, returnType) ->
+            // C.FunctionPtr (List.map (transformType generics) argTypes, transformType generics returnType)
+        | Fable.Type.DelegateType (argTypes, returnType) ->
+            C.Ptr (C.UserDefined (Print.funcTypeName ((transformType generics), argTypes, returnType), false, None))
         | Fable.Type.LambdaType(argType, returnType) ->
             let rec loop acc (_type: Type) =
                 match _type with
                 | Type.LambdaType(arg, _return) -> loop (acc @ [ arg ]) _return
                 | t -> acc, t
             let uncurriedArgs, _return = loop [ argType ] returnType
-            C.FunctionPtr (List.map (transformType generics) uncurriedArgs, transformType generics _return)
+            let args = uncurriedArgs
+            let args, returnType = unwrapLambdaType t
+            // let argNames = args |> List.map (transformType generics) |> List.map _.ToNameString() |> String.concat "_"
+            // let returnsName = returnType |> transformType generics |> _.ToNameString()
+            C.Ptr (C.UserDefined (Print.funcTypeName (transformType generics, args, returnType), false, None))
+            // todo: old: C.FunctionPtr (List.map (transformType generics) uncurriedArgs, transformType generics _return)
             //C.EmitType $"void* /* LambdaType %A{argType} %A{returnType} */"
         | Fable.Type.DeclaredType(entityRef, genericArgs) ->
             match entityRef.FullName with
@@ -636,6 +644,13 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
         match ident.Type with
         | DelegateType(argTypes, returnType) ->
             C.Call (ident.Name, callInfo.Args |> List.map (transformExpr ctx generics))
+        | LambdaType(argType, returnType) ->
+            let args, returnType = unwrapLambdaType ident.Type
+            // let argTypeNames = args |> List.map (transformType generics >> _.ToNameString()) |> String.concat "_"
+            // let fn = $"Func__{argTypeNames}_{returnType |> transformType generics |> _.ToNameString()}_Invoke"
+            let fn = $"{Print.funcTypeName(transformType generics, args, returnType)}_Invoke"
+            C.Call (fn, transformExpr ctx generics callee :: (callInfo.Args |> List.map (transformExpr ctx generics)))
+            // C.Expr.Emit (Print.printComment callee)
         | _ ->
             match callInfo.MemberRef with
             | Some (MemberRef (memberRef, info)) -> callMethod memberRef info // ident.Name
@@ -1189,6 +1204,70 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
     //        C.Ident ident
             transformExpr ctx generics body
             //C.BlockExpr (transformMember ctx generics expr)
+        | Lambda(ident, body, stringOption) ->
+            let value = expr
+            let args, body = unwrapLambda ident body
+            let name = getAnonymousFunctionName ctx ctx.currentFile value
+            let argTypes = args |> List.map _.Type
+            let _return = resolveType generics body.Type
+            let argCTypes = argTypes |> List.map (transformType generics)
+            let argTypeNames = argCTypes |> List.map _.ToNameString() |> String.concat "_"
+            let returnTypeName = _return |> transformType generics |> _.ToNameString()
+            // todo; is closure
+            // let isClosure = Fable.Transforms.Rust.Fable2Rust.Util.hasCapturedIdents
+            // todo: fails for lambdas that use recursion
+            if not (Query.isClosure ctx.idents body) then
+            // if Query.isEmptyDelegate args body then
+                let name = getAnonymousFunctionName ctx ctx.currentFile value
+                C.Expr.Emit name
+            else
+                let idents = Query.identsCaptured ctx.idents body
+                // let _ =
+                closureTypes.Value <- closureTypes.Value @ [
+                    GenericInteraction.Closure (
+                        idents |> List.ofSeq |> List.map _.Value.Type,
+                        argTypes, _return
+                    ), expr;
+                    GenericInteraction.Func (argTypes, _return), expr
+                ]
+                // closureTypes.Value <- closureTypes.Value @ [
+                //         idents |> List.ofSeq |> List.map _.Value.Type,
+                //         argTypes,
+                //         _return
+                // ]
+                // todo: generic instantiations for Box
+                // todo: generic instantiation for Func<argTypes, returnType>
+                // todo: generic instantiation for Closure<capturedTypes, argTypes, returnType>
+                // todo: generate func that calls closure impl
+                // todo: requires tracking
+                    // {returnType} Func_{args}_{return}_{Line}_{Column}({argList}) {{
+                    // for arg in args
+                        // {_type} arg_{argNum} = Box_{tName}_read(
+                    // }}
+                // todo: update closure impl name + arg list in other file (look for piece that creates the anonymous_fn implementation)
+                // todo
+                let capturedTypeNames =
+                    idents |> Seq.map _.Value.Type
+                    |> Seq.map (transformType generics)
+                    |> Seq.map _.ToNameString()
+                    |> String.concat "_"
+                let capturedValues = idents |> Seq.map _.Value |> Seq.map (transformExpr ctx generics)
+                let functionName = C.Expr.Emit name
+                let closureName2 = $"Closure__{capturedTypeNames}_{argTypeNames}_{returnTypeName}"
+                let closureName = Print.closureTypeName(transformType generics, idents |> Seq.toList |> List.map _.Value.Type, argTypes, _return)
+                let createClosure =
+                    C.Call ($"{closureName}_ctor", [ yield! capturedValues; functionName ])
+                let createFunc =
+                    C.Call (
+                        $"{Print.funcTypeName (transformType generics, argTypes, _return)}_ctor", [
+                            C.Value (C.ValueKind.Int 1)
+                            C.Expr.Emit $"{closureName}_Invoke"
+                            createClosure
+                            C.Expr.Emit $"{closureName}_Destructor"
+                        ])
+                // createFunc
+                // C.ExprAssignment <| C.Expr.Emit name
+                createFunc
         | Lambda(ident, body, _stringOption) ->
     //        transformLambda generics ident body
             // printfn $"Transforming lambda: {Print.printExpr 0 expr}"
@@ -1205,7 +1284,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
             else
                 printfn "Is not-empty lambda"
                 // wip: check for an anonymous_fn implementation
-                C.Expr.Emit $"{getAnonymousFunctionName ctx.currentFile expr}"
+                C.Expr.Emit $"{getAnonymousFunctionName ctx ctx.currentFile expr}"
     //            C.Expr.Emit $"(void*)0 /* {Print.printComment expr} */"
         | CurriedApply(applied, exprs, ``type``, sourceLocationOption) ->
             let lambdaDepth (t: Fable.Type) =
@@ -1228,8 +1307,79 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                     Print.emitComment expr
             | _ ->
                 Print.emitComment expr
+            let appliedArgTypes, appliedReturnType = unwrapLambdaType applied.Type
+            if appliedArgTypes.Length = exprs.Length then
+                let invokeArgs = transformExpr ctx generics applied :: (exprs |> List.map (transformExpr ctx generics))
+                let typeName = Print.funcTypeName (transformType generics, appliedArgTypes, appliedReturnType)
+                C.Call ($"{typeName}_Invoke", invokeArgs)
+            else
+                let captured = applied :: exprs
+                let args = appliedArgTypes |> List.skip exprs.Length
+                let closureName = Print.closureTypeName (transformType generics, captured |> List.map _.Type, args, appliedReturnType)
+                let funcTypeName = Print.funcTypeName (transformType generics, args, appliedReturnType)
+                let name = getAnonymousFunctionName ctx ctx.currentFile expr
+                // todo
+                let createClosure =
+                    C.Call ($"{closureName}_ctor", [ yield! (captured |> List.map (transformExpr ctx generics)); C.Expr.Emit name ])
+                let createFunc =
+                    C.Call (
+                        $"{funcTypeName}_ctor", [
+                            C.Value (C.ValueKind.Int 1)
+                            C.Expr.Emit $"{closureName}_Invoke"
+                            createClosure
+                            C.Expr.Emit $"{closureName}_Destructor"
+                        ])
+                closureTypes.Value <- closureTypes.Value @ [
+                    GenericInteraction.Closure (
+                        captured |> List.map _.Type,
+                        args, appliedReturnType
+                    ), expr
+                    GenericInteraction.Func (args, appliedReturnType), expr
+                ]
+                C.BlockExpr [
+                    C.Statement.Expression createFunc
+                    C.Statement.Expression (Print.emitComment expr)
+                ]
+                createFunc
         | Delegate(idents, body, stringOption, tags) ->
-            transformDelegate ctx generics expr idents body
+            if not (Query.isClosure ctx.idents body) then
+                let value = transformDelegate ctx generics expr idents body
+                let args, returnType = (idents |> List.map _.Type), body.Type
+                let typeName = Print.funcTypeName (transformType generics, args, returnType)
+                let name = getAnonymousFunctionName ctx ctx.currentFile body
+                C.Call ($"{typeName}_ctor", [ C.Value (C.ValueKind.Int 0); value; C.Expr.Emit "(void*)0"; C.Expr.Emit "(void*)0" ])
+            else
+                let value = transformDelegate ctx generics expr idents body
+                let argTypes, returnType = (idents |> List.map _.Type), body.Type
+                let name = getAnonymousFunctionName ctx ctx.currentFile body
+
+                let identsCaptured = Query.identsCaptured ctx.idents body
+                let capturedValues = identsCaptured |> Seq.map _.Value |> Seq.map (transformExpr ctx generics)
+                let closureName = Print.closureTypeName (transformType generics, identsCaptured |> Seq.map _.Value.Type |> Seq.toList, argTypes, returnType)
+                let funcTypeName = Print.funcTypeName (transformType generics, argTypes, returnType)
+
+                let functionName = C.Expr.Emit name
+
+                let createClosure =
+                    C.Call ($"{closureName}_ctor", [ yield! capturedValues; functionName ])
+                let createFunc =
+                    C.Call (
+                        $"{funcTypeName}_ctor", [
+                            C.Value (C.ValueKind.Int 1)
+                            C.Expr.Emit $"{closureName}_Invoke"
+                            createClosure
+                            C.Expr.Emit $"{closureName}_Destructor"
+                        ])
+                closureTypes.Value <- closureTypes.Value @ [
+                    GenericInteraction.Closure (
+                        identsCaptured |> List.ofSeq |> List.map _.Value.Type,
+                        argTypes, returnType
+                    ), expr
+                    GenericInteraction.Func (argTypes, returnType), expr
+                ]
+                createFunc
+                // let closureCall = ()
+                // C.Call ($"{funcTypeName}_ctor", [ C.Value (C.ValueKind.Int 0); value; C.Expr.Emit "(void*)0"; C.Expr.Emit "(void*)0" ])
         | IfThenElse(guardExpr, thenExpr, elseExpr, _sourceLocationOption) ->
             C.Ternary (transformExpr ctx generics guardExpr, transformExpr ctx generics thenExpr, transformExpr ctx generics elseExpr)
         | ObjectExpr (members, typ, baseCall) ->
@@ -1245,7 +1395,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
     with e ->
         Print.emitComment (string e)
 
-let getAnonymousFunctionName (filename: string) (expr: Expr) =
+let getAnonymousFunctionName (ctx: Context) (filename: string) (expr: Expr) =
     let idents =
         match expr with
         | Delegate (idents, body, stringOption, tags) -> idents
@@ -1260,6 +1410,7 @@ let getAnonymousFunctionName (filename: string) (expr: Expr) =
             |> List.map _.Range
         | _ -> []
     let file = filename.Split(char "/") |> Array.last
+    let isClosure = Query.isClosure ctx.idents expr
     let file = file.Replace(".", "_")
     let range =
         match expr.Range with
@@ -1290,6 +1441,8 @@ let getAnonymousFunctionName (filename: string) (expr: Expr) =
             //     Unchecked.defaultof<_>
 //                |> Option.defaultValue (fun () -> List.map (Fable.Transforms.AST.visitFromOutsideIn hasRange) idents)
 //            nextExprWithRange.Range.Value
+    if isClosure then
+        ()
     $"{file}_anonymous_fn_{range.start.line}_{range.start.column}"
 let transformDelegate (ctx: Context) (generics: (string * Type) list) (expr: Expr) (idents: Ident list) (body: Expr) : C.Expr =
     match body with
@@ -1304,7 +1457,7 @@ let transformDelegate (ctx: Context) (generics: (string * Type) list) (expr: Exp
             else
                 match expr.Range with
                 | Some range ->
-                    C.Expr.Emit (getAnonymousFunctionName ctx.currentFile expr)
+                    C.Expr.Emit (getAnonymousFunctionName ctx ctx.currentFile expr)
 //                    C.Expr.Emit $"/* emit_debug */ {function_name}_{memberRefInfo.CompiledName}"
                 | _ -> C.Expr.Emit <| $"/* couldn't find range for delegate */" + Print.printComment expr
 //                transformExpr ctx generics callee
@@ -1313,7 +1466,7 @@ let transformDelegate (ctx: Context) (generics: (string * Type) list) (expr: Exp
                 (C.Unary (C.Ref, transformExpr ctx generics callee))
             else
                 match expr.Range with
-                | Some range -> C.Expr.Emit (getAnonymousFunctionName ctx.currentFile expr)
+                | Some range -> C.Expr.Emit (getAnonymousFunctionName ctx ctx.currentFile expr)
                 | None -> Print.emitComment expr
     | CurriedApply(applied, exprs, ``type``, sourceLocationOption) ->
         if Query.isEmptyDelegate idents body then
@@ -1323,7 +1476,7 @@ let transformDelegate (ctx: Context) (generics: (string * Type) list) (expr: Exp
     | _ ->
         for i in 1..10 do
             printfn "Checking lambda in transformDelegate (third case)"
-        C.Expr.Emit (getAnonymousFunctionName ctx.currentFile expr)
+        C.Expr.Emit (getAnonymousFunctionName ctx ctx.currentFile expr)
 
 let rec getExprType generics (e: Expr) : C.Type =
     match e with
@@ -1402,11 +1555,18 @@ let rec requiresTracking generics t =
     | Any -> true
     | Tuple(genericArgs, isStruct) ->
         not isStruct || (List.exists (requiresTracking generics) genericArgs)
-    | GenericParam(name, isMeasure, constraints) -> requiresTracking generics (resolveType generics t)
+    | GenericParam(name, isMeasure, constraints) ->
+        let resolved = resolveType generics t
+        if resolved = t then
+            false
+        else
+            requiresTracking generics (resolveType generics t)
     | AnonymousRecordType(fieldNames, genericArgs, isStruct) -> not isStruct || (List.exists (requiresTracking generics) genericArgs)
     | Boolean -> false
     | String -> false
     | Char -> false
+    | LambdaType _ -> true
+    | DelegateType _ -> true
     | _ ->
         false
 let transformLet ctx generics (ident: Ident) value (body: Expr) =
@@ -1441,20 +1601,6 @@ let transformLet ctx generics (ident: Ident) value (body: Expr) =
                 | Delegate(idents, body, stringOption, tags) ->
                     // todo: emit anonymous_fn
                     C.ExprAssignment (Print.emitComment (Let (ident, value, body)))
-                | Lambda(ident, body, stringOption) ->
-                    let args, body = unwrapLambda ident body
-                    // todo; is closure
-                    // let isClosure = Fable.Transforms.Rust.Fable2Rust.Util.hasCapturedIdents
-                    // todo: fails for lambdas that use recursion
-                    // List.tail ctx.idents is used since the most recent binding will be the lambda itself
-                    if not (Query.isClosure (List.tail ctx.idents) body) then
-                    // if Query.isEmptyDelegate args body then
-                        let name = getAnonymousFunctionName ctx.currentFile value
-                        C.ExprAssignment <| C.Expr.Emit name
-                    else
-                        // todo
-                        let name = getAnonymousFunctionName ctx.currentFile value
-                        C.ExprAssignment <| C.Expr.Emit name
                 | _ ->
                     // todo declare everything before
                     // For more complex assignment, we have to declare the type and then initialize it in a code block
@@ -1500,6 +1646,7 @@ let transformLet ctx generics (ident: Ident) value (body: Expr) =
             postFollowing @ [ List.last body ]
     compiler.RemoveIdent ident |> ignore
     let postAssignment =
+        // todo: Why Query.isSimpleExpr ?
         if requiresTracking generics value.Type && Query.isSimpleExpr value then
             // todo: Runtime_track_var
             // [ C.Expression <| C.Call ("Runtime_track_var", [ C.TypeCast (C.EmitType "void**", C.Expr.Emit $"&{ident.Name}")]) ]

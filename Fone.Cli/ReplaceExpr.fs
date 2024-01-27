@@ -210,4 +210,7 @@ let replaceByrefContents (e: Expr) =
         | _ -> e
 //    )
 let replacements =
-    (replaceTmdsCalls >> replaceEmptyDelegatesAndLambdas >> replaceByrefContents >> replaceInputRecord >> replaceCopyOfStruct)
+    (replaceTmdsCalls >>
+     // todo:
+     // replaceEmptyDelegatesAndLambdas >>
+     replaceByrefContents >> replaceInputRecord >> replaceCopyOfStruct)

@@ -361,8 +361,19 @@ module Query =
 ////            let acc_idents = idents
 ////            false
 //        | _ -> false
+    let identsCaptured (idents: string list) (expr: Expr) =
+        let mutable captured = Map.empty
+        let fn e =
+            match e with
+            | Fable.IdentExpr i when (List.contains i.Name idents) ->
+                captured <- captured.Add (i.Name, e)
+            | _ -> ()
+            None
+        Fable.Transforms.AST.visitFromOutsideIn fn expr |> ignore
+        captured
     let isClosure (idents: string list) (expr: Expr) =
         let isCapture e = match e with | Fable.IdentExpr i when (List.contains i.Name idents) -> true | _ -> false
+        // Fable.Transforms.AST.deepExists isCapture expr
         Fable.Transforms.AST.deepExists isCapture expr
     let isEmptyDelegate (idents: Ident list) (body: Expr) =
         match body with
@@ -472,10 +483,15 @@ module Query =
 
         let oldResult =
             match expr with
-            | Sequential _ | Let _ | WhileLoop _ | ForLoop _
+            | Sequential _
+            // | Let _
+            | WhileLoop _
+            | ForLoop _
     //        | Delegate _
             | TryCatch _
-            | Lambda _ -> false
+            // | Lambda _ -> false
+            | Lambda _ -> true
+            | Let _ -> false
             | Operation(operationKind, tags, ``type``, sourceLocationOption) ->
                 match operationKind with
                 | Unary(operator, operand) -> isSimpleExpr operand
@@ -571,6 +587,8 @@ type GenericInteraction =
     | MethodCall of _member: MemberFunctionOrValue * fableMethodName: string * genericParams: Type list
     | Instantiation of fullName: string * genericParams: Type list
     | Tupl of genericParams: Type list * isStruct: bool
+    | Func of args: Type list * _return: Type
+    | Closure of captured: Type list * args:Type list * _return: Type
     | ValueOption of genericParam: Type
 let inline duInfo (o: 't) =
     FSharp.Reflection.FSharpValue.GetUnionFields (o, o.GetType())
@@ -621,12 +639,21 @@ let pullGenericTypeUsages generics (com: Type.ICompiler) (t: Type) : GenericInte
 // let com: Fable.Compiler ref = ref Unchecked.defaultof<Fable.Compiler>
 // let com: Type.ICompiler ref = ref Unchecked.defaultof<_>
 let database: Type.ICompiler ref = ref Unchecked.defaultof<_>
-
+let closureTypes: (GenericInteraction * Expr) list ref = ref []
 let findGenerics (com: Type.ICompiler) (compiler: MyCompiler) generics expr : (GenericInteraction * Expr) list list =
     walkExpr (fun expr ->
         let fromType = pullGenericTypeUsages generics com expr.Type |> List.map (fun a -> a, Unchecked.defaultof<_>)
         let fromBody =
             match expr with
+            | IdentExpr ident ->
+                match ident.Type with
+                | LambdaType _ ->
+                    let argTypes, _return = unwrapLambdaType ident.Type
+                    [ GenericInteraction.Func (argTypes, _return), expr ]
+                | _ -> []
+            | Lambda(ident, body, stringOption) ->
+                let argTypes, _return = unwrapLambdaType expr.Type
+                [ GenericInteraction.Func (argTypes, _return), expr ]
             | Call(IdentExpr ident, info, typ, range)
                     when info.GenericArgs.Length > 0 ->
                 match info.MemberRef |> Option.bind com.TryGetMember with
@@ -1059,6 +1086,15 @@ type Print =
             $"{return_type.ToTypeString()} {name}({arg_string});"
     static member compiledFunctionSignature (functionInfo: C.FunctionInfo) : string =
         Print.compiledFunctionSignature (functionInfo.id, functionInfo.args, functionInfo.return_type)
+    static member closureTypeName (transformType: _ -> C.Type, capturedArgs: Type list, args: Type list, _return: Type) =
+        let captured = capturedArgs |> List.map (transformType) |> List.map _.ToNameString() |> String.concat "_"
+        let args = args |> List.map (transformType) |> List.map _.ToNameString() |> String.concat "_"
+        let _return = _return |> transformType |> _.ToNameString()
+        $"Closure__{captured}__{args}__{_return}"
+    static member funcTypeName (transformType: _ -> C.Type, args: Type list, _return: Type) =
+        let args = args |> List.map (transformType) |> List.map _.ToNameString() |> String.concat "_"
+        let _return = _return |> transformType |> _.ToNameString()
+        $"Func__{args}__{_return}"
     static member compiledTypeName (_type: EntityRef) =
         _type.FullName.Replace(".", "_").Replace("Tmds_Linux_s", "")
     static member compiledTypeName (_type: MemberFunctionOrValue) =
@@ -1201,3 +1237,11 @@ let unwrapLambda ident body =
         | Lambda(ident, body, stringOption) -> loop (acc @ [ ident ]) body
         | t -> acc, body
     loop [ ident ] body
+let unwrapLambdaType t =
+    let rec loop acc t =
+        match t with
+        | LambdaType (arg, returnType) ->
+            loop (acc @ [ arg ]) returnType
+        | t -> acc, t
+    loop [] t
+

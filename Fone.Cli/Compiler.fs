@@ -300,9 +300,12 @@ let doRaii (body: C.Statement list) (sb: SourceBuilder) =
     for i in idents do
         match i with
         | C.Declaration info ->
-            let (C.Ptr t) = info._type
-            sb.AppendLine $"Runtime_end_var_scope({info.name}, {t.ToNameString()}_Destructor);"
-            |> ignore
+            match info._type with
+            | C.Ptr t ->
+                sb.AppendLine $"Runtime_end_var_scope({info.name}, {t.ToNameString()}_Destructor);"
+                |> ignore
+            | _ -> ()
+
         | _ -> ()
         // sb.AppendLine()
         printfn $"{i}"

@@ -99,6 +99,7 @@ let buildFinalizer generics genericParams (ent: Entity) =
     }
 let transformFunc context (name: string) (args: Ident list) (funcBody: Expr) (generics: (string * Type) list) : C.FunctionInfo =
     // (Unchecked.defaultof<Fable.Compiler>).GetImplementationFile
+    let context = { context with idents = (args |> List.map _.Name) @ context.idents }
     let addReturn (generics: (string * Type) list) (expr: Expr) : C.Statement list =
         let rec loop (generics: (string * Type) list) (body: C.Statement list) : C.Statement list =
             let last =
@@ -305,8 +306,101 @@ module Type =
                         compiledModule += (f.id, C.Function f)
                         // compiler.UpdateFile(context.currentFile, FileCompilationResults.AddClassDeclaration, classDecl)
                 (includes, compiledModule.Value)
-
-let gatherAnonymousFunctions (context: Context) (body: Expr) : (string * C.ModuleDeclaration) list =
+let gatherUnfoundIdents (existingIdents: string list) (e: Expr) =
+    let mutable idents = existingIdents
+    let mutable captured = []
+    let fn (expr: Expr) =
+        match expr with
+        | Let(ident, value, body) ->
+            idents <- ident.Name :: idents
+            expr
+        | IdentExpr ident ->
+            if not (List.contains ident.Name idents) then
+                captured <- ident :: captured
+            expr
+        | expr -> expr
+    Fable.Transforms.AST.visit fn e |> ignore
+    captured
+let gatherAnonymousFunctions2 existingIdents (expr: Expr) =
+    let mutable previousIdents: Ident list = existingIdents
+    let mutable acc = []
+    let fn e =
+        match e with
+        | Let(ident, value, body) ->
+            previousIdents <- ident :: previousIdents
+            None
+        | Delegate(idents, body, stringOption, tags) ->
+            let args, body = idents, body
+            let captured =
+                Query.identsCaptured (previousIdents |> List.map _.Name) e
+                |> Seq.map (fun kv -> let (IdentExpr ident) = kv.Value in ident)
+                |> Seq.toList
+            acc <- ((captured @ args), e, body) :: acc
+            let more = gatherAnonymousFunctions2 previousIdents body
+            acc <- more @ acc
+            Some e
+        | Lambda(ident, body, stringOption) ->
+            let args, body = unwrapLambda ident body
+            let captured =
+                Query.identsCaptured (previousIdents |> List.map _.Name) e
+                |> Seq.map (fun kv -> let (IdentExpr ident) = kv.Value in ident)
+                |> Seq.toList
+            acc <- ((captured @ args), e, body) :: acc
+            let more = gatherAnonymousFunctions2 previousIdents body
+            acc <- more @ acc
+            Some e
+        | CurriedApply(applied, exprs, ``type``, sourceLocationOption) ->
+            let argTypes, returnType = unwrapLambdaType applied.Type
+            if exprs.Length = argTypes.Length then None
+            else
+                let captured = applied :: exprs
+                let remainingArgs = [
+                    for i in 0..(argTypes.Length - exprs.Length) - 1 do
+                        {
+                            Name = $"arg_{i}"
+                            IsMutable = false
+                            Type = argTypes[exprs.Length + i]
+                            IsThisArgument = false
+                            IsCompilerGenerated = false
+                            Range = e.Range
+                        }
+                ]
+                let allArgs = captured @ (remainingArgs |> List.map IdentExpr)
+                let anonymousFnArgs = [
+                    for i in 0..allArgs.Length - 1 do
+                        {
+                            Name = $"arg_{i}"
+                            IsMutable = false
+                            Type = allArgs[i].Type
+                            IsThisArgument = false
+                            IsCompilerGenerated = true
+                            Range = allArgs[i].Range
+                        }
+                ]
+                // let fnArgs =
+                //     (captured |> List.map (fun c ->
+                //         match c with
+                //         | Ident ident -> ident
+                //         |
+                //     ))
+                //     @ remainingArgs
+                let info: CallInfo = {
+                    ThisArg = None
+                    Args = (List.tail anonymousFnArgs) |> List.map IdentExpr
+                    // todo: SignatureArg
+                    SignatureArgTypes = argTypes
+                    GenericArgs = []
+                    MemberRef = None
+                    Tags = []
+                }
+                acc <- (anonymousFnArgs, e, Fable.Call(IdentExpr anonymousFnArgs[0], info, returnType, e.Range)) :: acc
+                // todo: let more = ... previousIdents applied?
+                None
+        | e ->
+            None
+    Fable.Transforms.AST.visitFromOutsideIn fn expr
+    acc
+let gatherAnonymousFunctions (existingIdents: Ident list) (context: Context) (body: Expr) : (string * C.ModuleDeclaration) list =
     let anonymous_functions =
         Function.findAnonymousFunctions context body
         |> List.choose id
@@ -315,21 +409,51 @@ let gatherAnonymousFunctions (context: Context) (body: Expr) : (string * C.Modul
         match fn with
         | (Delegate(idents, delegateBody, stringOption, tags), delegateIdents) ->
             let (delegateExpr, _) = fn
-            let isSimple = Query.isEmptyDelegate idents delegateBody
-            if not isSimple then
-                let id = getAnonymousFunctionName context.currentFile delegateExpr
-                let f = Function.transformFunc context id idents delegateBody []
-//                            if Query.isClosure (fst fn.Value) then
-                let isIdentUsed name expr =
-                    printfn "TODO: isIdentUsed for identifying closures in the compiler"
-                    false
-                match delegateIdents |> List.tryFind (fun i -> isIdentUsed i.Name delegateBody) with
-                | Some i ->
-                    printfn "Can't handle closures"
-                | _ ->
-                    toCompile <- toCompile @ [ (id, C.Function f) ]
-            else ()
+            let capturedIdents = gatherUnfoundIdents (idents |> List.map _.Name) delegateBody
+            let idents = capturedIdents @ idents
+            // if Query.isClosure context.idents delegateBody then
+            //     let id = getAnonymousFunctionName context context.currentFile delegateExpr
+            //     let capturedIdents =
+            //         Query.identsCaptured context.idents delegateBody
+            //         |> Seq.map (fun kv -> {
+            //             Name = kv.Key
+            //             Type = kv.Value.Type
+            //             IsMutable = false
+            //             IsThisArgument = false
+            //             IsCompilerGenerated = false
+            //             Range = kv.Value.Range
+            //         })
+            //         |> List.ofSeq
+            //     let f = Function.transformFunc context id (capturedIdents @ idents) delegateBody []
+            //     toCompile <- toCompile @ [
+            //         id,
+            //         C.Function f
+            //     ]
+            // else
+            do
+                let isSimple = Query.isEmptyDelegate idents delegateBody
+                if not isSimple then
+                    let id = getAnonymousFunctionName context context.currentFile delegateExpr
+                    let f = Function.transformFunc context id idents delegateBody []
+    //                            if Query.isClosure (fst fn.Value) then
+                    let isIdentUsed name expr =
+                        printfn "TODO: isIdentUsed for identifying closures in the compiler"
+                        false
+                    match delegateIdents |> List.tryFind (fun i -> isIdentUsed i.Name delegateBody) with
+                    | Some i ->
+                        printfn "Can't handle closures"
+                    | _ ->
+                        toCompile <- toCompile @ [ (id, C.Function f) ]
+                else ()
         | _ -> ()
+    let anon2 = gatherAnonymousFunctions2 existingIdents (Sequential [ body ])
+    // todo: shadowing original
+    let mutable toCompile = []
+    for (idents, declExpr, functionExpr) in anon2 do
+        let id = getAnonymousFunctionName context context.currentFile functionExpr
+        let id = getAnonymousFunctionName context context.currentFile declExpr
+        let f = Function.transformFunc context id idents functionExpr []
+        toCompile <- toCompile @ [ (id, C.Function f) ]
     toCompile |> List.distinctBy fst
 let findAnonymousFunctions ctx (expr: Expr) : Option<(Expr * Ident list)> list =
     let mutable childDelegates = []
@@ -374,7 +498,7 @@ let findAnonymousFunctions ctx (expr: Expr) : Option<(Expr * Ident list)> list =
                     match value with
                     | Fable.Lambda(lambdaIdent, body, stringOption) ->
                         let visit = Fable.Transforms.AST.visit
-                        let name = getAnonymousFunctionName ctx.currentFile lambdaExpr
+                        let name = getAnonymousFunctionName ctx ctx.currentFile lambdaExpr
                         let args, body = unwrapLambda lambdaIdent body
                         let rec replace (e: Expr) =
                             match e with

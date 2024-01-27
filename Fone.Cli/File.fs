@@ -217,7 +217,7 @@ let transformFile (_com: Fable.Compiler) (file: File) =
                 | "____set_header_import" -> ()
                 | _ -> transformExpr context [] actionDecl.Body |> ignore
             | _ ->
-                let toCompile = Function.gatherAnonymousFunctions context actionDecl.Body
+                let toCompile = Function.gatherAnonymousFunctions [] context actionDecl.Body
                 for fn in toCompile do
                     compiledModule += fn
                 static_constructor <- static_constructor @ [ (actionDecl, (transformMember context [] actionDecl.Body)) ]
@@ -299,7 +299,7 @@ let transformFile (_com: Fable.Compiler) (file: File) =
                         for i in 1..10 do print.printfn "========================================"
 
                     compiledModule += (id, C.Function f)
-                    let toCompile = Function.gatherAnonymousFunctions context memberDecl.Body
+                    let toCompile = Function.gatherAnonymousFunctions memberDecl.Args context memberDecl.Body
                     for fn in toCompile do
                         compiledModule += fn
         | ClassDeclaration classDecl ->
