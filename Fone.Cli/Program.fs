@@ -158,19 +158,19 @@ let writeMainFile (projHeaderName: string) (actualMain: string option) =
 
 let echoType (t: Type) = sprintf "| Fable.Type: %A" t
 
-let appendModuleIncludes (projectFile: string) (sb: StringBuilder) =
-    let buildDir =
-        IO.Path.GetDirectoryName(projectFile)
-    let projHeaderName =
-        IO.Path.GetFileNameWithoutExtension(projectFile) + ".h"
-    // sb.AppendLine($"#include \"{projHeaderName}\"") |> ignore
-    sb
-        .AppendLine("#include <stdint.h>")
-        .AppendLine("#include <stdio.h>")
-        .AppendLine("#include <stdbool.h>")
-        .AppendLine("#include <stdlib.h>")
-        .AppendLine("")
-    |> ignore
+// let appendModuleIncludes (projectFile: string) (sb: StringBuilder) =
+//     let buildDir =
+//         IO.Path.GetDirectoryName(projectFile)
+//     let projHeaderName =
+//         IO.Path.GetFileNameWithoutExtension(projectFile) + ".h"
+//     // sb.AppendLine($"#include \"{projHeaderName}\"") |> ignore
+//     sb
+//         .AppendLine("#include <stdint.h>")
+//         .AppendLine("#include <stdio.h>")
+//         .AppendLine("#include <stdbool.h>")
+//         .AppendLine("#include <stdlib.h>")
+//         .AppendLine("")
+//     |> ignore
 let writeModuleHeaderFile runtime context (projPath: string) =
     let buildDir = IO.Path.GetDirectoryName(projPath)
     let projHeaderName = IO.Path.GetFileNameWithoutExtension(projPath) + ".h"
@@ -200,6 +200,7 @@ let writeModuleHeaderFile runtime context (projPath: string) =
         .AppendLine("#include <string.h>")
         // .AppendLine("#include \"map.h\"")
     |> ignore
+    sb.AppendLine "#define UNIT ((void*)0)" |> ignore
     for text in header_emit_texts.Value do
         sb.AppendLine($"{text}")
         |> ignore

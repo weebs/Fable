@@ -66,7 +66,7 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fable.Compiler", "src\Fable
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fone.Cli", "Fone.Cli\Fone.Cli.fsproj", "{F6CD4FB0-19C6-4F90-BE5E-2BD54277A8C0}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fable.Tests.C", "tests\Fable.Tests.C\Fable.Tests.C.fsproj", "{5EC00B7F-47C5-4F38-8E8D-1C449135B4F0}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fable.Tests.C", "tests\C\Fable.Tests.C\Fable.Tests.C.fsproj", "{5EC00B7F-47C5-4F38-8E8D-1C449135B4F0}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

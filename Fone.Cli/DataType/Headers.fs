@@ -59,7 +59,9 @@ let writeFilesModuleHeaderStuffs (methods_sb: CompiledOutputBuilder) (sb: Compil
         match database.contents.TryGetEntity(c.Entity) with
         | Some ent ->
             if ent.IsFSharpUnion then
-                Core.writeUnionToBuilder sb ent
+                let info = Core.writeUnionToBuilder [] sb ent
+                sb.AppendLine info.decl |> ignore
+                methods_sb.AppendLine info.code |> ignore
                 //sb.AppendLine $"%A{ent}" |> ignore
             else
                 let struct_name =
@@ -67,7 +69,8 @@ let writeFilesModuleHeaderStuffs (methods_sb: CompiledOutputBuilder) (sb: Compil
                 let fields = compiler.GetEntity(c.Entity.FullName).FSharpFields
                 let compiledFields =
                     fields |> List.map (fun f -> f.Name, (transformType [] f.FieldType))
-                sb.Append(Core.writeStruct ent (struct_name, compiledFields))
+                // todo: Constructor ?
+                sb.Append(Core.writeStruct [] ent c.Constructor (struct_name, compiledFields))
                 |> ignore
         | None ->
             ()

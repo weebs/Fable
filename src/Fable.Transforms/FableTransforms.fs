@@ -9,7 +9,8 @@ let isIdentCaptured identName expr =
         | [] -> false
         | expr :: restExprs ->
             match expr with
-            | IdentExpr i when i.Name = identName -> isClosure
+            | IdentExpr i when i.Name = identName && isClosure -> true
+            | IdentExpr i when i.Name = identName && restExprs = [] -> isClosure
             | Lambda(_, body, _) ->
                 loop true [ body ] || loop isClosure restExprs
             | Delegate(_, body, _, _) ->

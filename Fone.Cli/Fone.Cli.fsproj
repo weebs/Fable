@@ -20,6 +20,7 @@
         <Compile Include="DataType\DataType.fs" />
         <Compile Include="DataType\Headers.fs" />
         <Compile Include="DataType\Function.fs" />
+        <Compile Include="DataType\Func.fs" />
         <Compile Include="DataType\Generic.fs" />
         <Compile Include="Program.fs" />
         <Compile Include="File.fs" />

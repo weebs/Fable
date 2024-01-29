@@ -82,9 +82,9 @@ let writeArg ((name, _type): string * C.Type) =
     | _ ->
         $"{_type.ToTypeString()} {name}"
 let writeFunctionArgs (args: (string * C.Type) list) =
-    if args.Length = 1 && (snd args[0]) = C.Void then
-        ""
-    else
+    // if args.Length = 1 && (snd args[0]) = C.Void then
+    //     ""
+    // else
         System.String.Join(", ", List.map writeArg args)
 
 let valueToString (value: C.ValueKind) : string =

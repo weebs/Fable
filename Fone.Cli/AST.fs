@@ -3,8 +3,11 @@ module Fable.C.AST
 module Type =
     open Fable.AST.Fable
     type ICompiler =
+        abstract member TryGetMember: string * string -> (Entity * File * MemberDecl * MemberFunctionOrValue) option
         abstract member TryGetEntity: EntityRef -> Entity option
+        abstract member TryGetEntity: string -> (Entity * File) option
         abstract member TryGetMember: MemberRef -> MemberFunctionOrValue option
+        abstract member TryGetMemberByRef: string * string -> (Entity * File * MemberDecl * MemberFunctionOrValue) option
         abstract member GetEntity: EntityRef -> Entity
         abstract member GetMember: MemberRef -> MemberFunctionOrValue
         abstract member SaveFile: Fable.Compiler -> Fable.AST.Fable.File -> unit
@@ -18,6 +21,7 @@ module rec C =
 
     type DeclarationAssignment =
         | ExprAssignment of Expr
+        /// Declares a variable and then assigns to it the last result of a block expression
         | StatementAssignment of Statement
         | ComplexAssignment
         | Default

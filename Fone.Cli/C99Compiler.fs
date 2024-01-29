@@ -11,6 +11,7 @@ open Fable.AST.Fable
 
 // type Compiler = ICompiler
 type Context = {
+    com: Fable.Compiler
     currentFile: string
     idents: string list
     db: AST.Type.ICompiler

@@ -1,5 +1,7 @@
 main: main.c Fable.Tests.C.fs.c
 	gcc -g main.c -o main
+debug: main
+	valgrind ./main
 main.exe: main.c Fable.Tests.C.fs.c
 	gcc -g main.c -o main.exe
 arrays.exe: arrays_testing.c

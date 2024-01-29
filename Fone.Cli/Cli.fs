@@ -101,18 +101,21 @@ module Compiler =
                 Fable.C.File.writeFile filePath c_file.includes c_file.compiledModule c_file.static_constructor
         |]
         let header =
+            let com = CompilerImpl(projCracked.SourceFilePaths |> Seq.last, project, options, fableLibDir)
             Fable.C.Writer.writeModuleHeaderFile
                 Fable.C.File.runtime
                 {
+                    com = com
                     currentFile = "Program.fs"; idents = []
                     db = Fable.C.Helpers.database.contents
                 }
                 "/build/project.json"
         let files = io.files
         let generics = files |> Seq.find (fun kv -> kv.Key.Contains ".generics.")
-        let output = compiledFiles |> String.concat "\n"
+        let output =
+            compiledFiles |> String.concat "\n"
         let compiledOutput =
-            $"{header.file}\n{header.generics}\n{output}"
+            $"{header.file}\n{header.generics}\n{output}\n{header.init}"
             |> _.Replace("\r\n", "\n").Replace("\r", "")
         let outputPath = projFile.Replace (".fsproj", ".fs.c")
         File.WriteAllText (outputPath, compiledOutput)
@@ -121,8 +124,8 @@ module Compiler =
 [<EntryPoint>]
 let main argv =
     let testsProjFile =
-        // Path.Join(__SOURCE_DIRECTORY__, "../tests/Fable.Tests.C/Fable.Tests.C.fsproj")
-        Path.Join(__SOURCE_DIRECTORY__, "../src/quicktest/Quicktest.fsproj")
+        Path.Join(__SOURCE_DIRECTORY__, "../tests/C/Fable.Tests.C/Fable.Tests.C.fsproj")
+        // Path.Join(__SOURCE_DIRECTORY__, "../src/quicktest/Quicktest.fsproj")
         // "C:/Users/Dave/projects/Fable/src/quicktest/Quicktest.fsproj"
     // File.WriteAllText("/Quicktest.fsproj", projText)
     // let quicktest = Path.Join(__SOURCE_DIRECTORY__, "../tests/Fable.Tests.C/Fable.Tests.C.fsproj")

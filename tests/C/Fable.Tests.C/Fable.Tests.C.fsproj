@@ -7,6 +7,13 @@
 
     <ItemGroup>
         <Compile Include="System.fs" />
+        <Compile Include="List.fs" />
+        <Compile Include="Tuples.fs" />
+        <Compile Include="Objects.fs" />
+        <Compile Include="Unions.fs" />
+        <Compile Include="Structs.fs" />
+        <Compile Include="Options.fs" />
+        <Compile Include="Closures.fs" />
         <Compile Include="Program.fs" />
         <Content Include="*.c" />
         <Content Include="*.js" />

@@ -153,6 +153,7 @@ let transformFile (_com: Fable.Compiler) (file: File) =
     // database.contents <- _com
     compiler.UpdateFile(_com.CurrentFile, FileCompilationResults.Empty, ())
     let context = {
+        com = _com
         currentFile = _com.CurrentFile
         idents = []
         db = database.contents

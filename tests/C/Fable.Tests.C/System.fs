@@ -1,5 +1,8 @@
 ﻿module Fable
-
+type Ref<'t>(initValue: 't) =
+    let mutable value = initValue
+    member this.Value = value
+    member this.SetValue _value = value <- _value
 module Hash =
     let hashValue (pointer: nativeint) (length: int) : int =
         let pointer: nativeptr<byte> = NativeInterop.NativePtr.ofNativeInt pointer
@@ -23,9 +26,10 @@ module System =
                             items[i] <- copy[i]
                     items[n] <- item
                     n <- n + 1
-                    printfn $"[{n}] ==> {item}"
+                    // printfn $"[{n}] ==> {item}"
                 member this.Item
                     with get index = items[index]
+                member this.Count = n
             type Dictionary<'key, 'value when 'key: equality>() =
                 // let items: 'value[] = Array.zeroCreate 0
                 let buckets: ('key * 'value)[][] = Array.zeroCreate 8

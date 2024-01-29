@@ -27,7 +27,6 @@ let buildConstructor context generics genericParams (member_declaration: MemberD
         return_type = return_type
         args = args
         body = [
-            let finalizer_name = Print.finalizerName (c_types, fullName)
             C.Declaration {
                 name = "this$"
                 // todo: can't change this from C.EmitType to C.UserDefined because it would cause a destructor
@@ -50,7 +49,8 @@ let buildConstructor context generics genericParams (member_declaration: MemberD
 //                    // todo: re-enable this
 //                    C.Statement.Emit $"Runtime_set_finalizer(this$, &{finalizer_name});"
             C.Emit "__thread_context++;"
-            C.Emit $"this$->__refcount = 1;"
+            if not isValueType then
+                C.Emit $"this$->__refcount = 1;"
             // todo: Initialize variables
             yield! f
             C.Statement.Emit ("// use_gc_for_address()")
@@ -59,7 +59,10 @@ let buildConstructor context generics genericParams (member_declaration: MemberD
             // todo: This should use autorelease
             // todo: Do constructors need to use thread context?
             C.Emit "__thread_context--;"
-            C.Return (C.Expr.Emit $"Runtime_autorelease(this$, {finalizer_name})")
+            if not isValueType then
+                C.Return (C.Expr.Emit $"Runtime_autorelease(this$, {finalizer_name})")
+            else
+                C.Return (C.Expr.Emit $"this$")
         ]
     }
     (id, type_sig, function_info)
@@ -93,12 +96,20 @@ let buildFinalizer generics genericParams (ent: Entity) =
                     C.Emit $"Runtime_end_var_scope(this$->{field.Name}, System_Array__{fieldTypeName}_Destructor);"
                     // C.Emit $"free(this$->{field.Name});"
                 | _ -> ()
-            C.Emit "free(this$);"
+            if not ent.IsValueType then
+                C.Emit "free(this$);"
         ]
-        C.FunctionInfo.args = [ ("this$", C.Ptr (C.UserDefined (name, false, None))) ] // Some ent))) ]
+        C.FunctionInfo.args = [
+            if not ent.IsValueType then
+                ("this$", C.Ptr (C.UserDefined (name, false, None)))
+            else
+                ("this$", C.UserDefined (name, false, None))
+        ] // Some ent))) ]
     }
 let transformFunc context (name: string) (args: Ident list) (funcBody: Expr) (generics: (string * Type) list) : C.FunctionInfo =
     // (Unchecked.defaultof<Fable.Compiler>).GetImplementationFile
+    // todo:
+    // let args = args |> List.filter (fun ident -> ident.Type <> Fable.Unit)
     let context = { context with idents = (args |> List.map _.Name) @ context.idents }
     let addReturn (generics: (string * Type) list) (expr: Expr) : C.Statement list =
         let rec loop (generics: (string * Type) list) (body: C.Statement list) : C.Statement list =
@@ -136,6 +147,7 @@ let transformFunc context (name: string) (args: Ident list) (funcBody: Expr) (ge
                 yield! body
                 C.Emit "__thread_context--;"
                 C.Emit "Runtime_clear_pool();"
+                C.Return (C.Expr.Emit "UNIT")
             ]
     //    elif body.Length = 1 then
     //        [
@@ -188,7 +200,10 @@ let transformFunc context (name: string) (args: Ident list) (funcBody: Expr) (ge
 
     let (args, extra_statements) = transformMemberDeclArgs generics args
 //    let (args, extra_statements) = args, []
-    let rt = transformType generics funcBody.Type
+    let rt =
+        match funcBody.Type with
+        // | Unit -> C.Void
+        | _ -> transformType generics funcBody.Type
     let body = addReturn generics funcBody
 
     print.printfn $"[Fable.NativeCode] Transforming function: {name}"
@@ -299,6 +314,28 @@ module Type =
                         Display.memberDeclaration com constructor |> ignore
                     #endif
                 | None ->
+                    if ent.IsFSharpRecord && not ent.IsValueType then
+                        // let (name, type_signature, f) =
+                        //     Function.buildConstructor context [] [] constructor ent.FullName ent.IsValueType
+                        let typeName = Print.compiledTypeName ([], ent.FullName)
+                        let name = $"{typeName}_ctor"
+
+                        let return_type =
+                            if ent.IsValueType then
+                                C.UserDefined (typeName, true, None)
+                            else C.Ptr (C.UserDefined (typeName, true, None))
+                        let argType = C.UserDefined (typeName, true, None)
+                        let f: C.FunctionInfo = {
+                            id = name
+                            return_type = return_type
+                            args = [ ("data", argType) ]
+                            body = [
+                                C.Emit $"{typeName}* this$ = malloc(sizeof({typeName}));"
+                                C.Emit $"*this$ = data;"
+                                C.Return (C.Call ("Runtime_autorelease", [ (C.Expr.Emit "this$"); C.Expr.Emit $"{typeName}_Destructor" ]))
+                            ]
+                        }
+                        compiledModule += (name, C.Function f)
                     if not isGeneric then
     //                    classDeclarations += (classDecl.Entity.FullName, classDecl)
                         let ent = com.GetEntity(classDecl.Entity)
@@ -333,7 +370,7 @@ let gatherAnonymousFunctions2 existingIdents (expr: Expr) =
             let args, body = idents, body
             let captured =
                 Query.identsCaptured (previousIdents |> List.map _.Name) e
-                |> Seq.map (fun kv -> let (IdentExpr ident) = kv.Value in ident)
+                |> Seq.map (fun kv -> let ident = kv.Value in ident)
                 |> Seq.toList
             acc <- ((captured @ args), e, body) :: acc
             let more = gatherAnonymousFunctions2 previousIdents body
@@ -343,7 +380,7 @@ let gatherAnonymousFunctions2 existingIdents (expr: Expr) =
             let args, body = unwrapLambda ident body
             let captured =
                 Query.identsCaptured (previousIdents |> List.map _.Name) e
-                |> Seq.map (fun kv -> let (IdentExpr ident) = kv.Value in ident)
+                |> Seq.map (fun kv -> let ident = kv.Value in ident)
                 |> Seq.toList
             acc <- ((captured @ args), e, body) :: acc
             let more = gatherAnonymousFunctions2 previousIdents body
@@ -452,6 +489,22 @@ let gatherAnonymousFunctions (existingIdents: Ident list) (context: Context) (bo
     for (idents, declExpr, functionExpr) in anon2 do
         let id = getAnonymousFunctionName context context.currentFile functionExpr
         let id = getAnonymousFunctionName context context.currentFile declExpr
+        let rec loop idents expr =
+            match idents with
+            | [] -> expr
+            | ident::idents -> loop idents (expr |> replaceMutableValueCapturedIdent context ident)
+        let functionExpr =
+            let identsToReplace = idents |> List.filter (fun ident -> ident.IsMutable && Query.requiresRefCell context [] ident.Type)
+            loop identsToReplace functionExpr
+        let idents = idents |> List.map (fun ident ->
+            if ident.IsMutable && Query.requiresRefCell context [] ident.Type then
+                match context.db.TryGetEntity "Fable.Ref`1" with
+                | Some (ent, file) ->
+                    { ident with Type = DeclaredType (ent.Ref, [ ident.Type ]) }
+                | _else ->
+                    failwith $"%A{_else}"
+            else ident
+        )
         let f = Function.transformFunc context id idents functionExpr []
         toCompile <- toCompile @ [ (id, C.Function f) ]
     toCompile |> List.distinctBy fst

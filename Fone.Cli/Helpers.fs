@@ -160,9 +160,10 @@ let rec gatherIdentsBefore (before: Expr) (expr: Expr) : Ident list =
     snd (loop [] expr)
 
 let filterFunctionMethodArgs (args: Ident list) =
-    if args.Length = 1 && args.[0].Type = Unit then
-        []
-    elif args.Length = 2 && args.[0].IsThisArgument && args.[1].Type = Unit then
+    // todo: Unit Args
+    // if args.Length = 1 && args.[0].Type = Unit then
+    //     []
+    if args.Length = 2 && args.[0].IsThisArgument && args.[1].Type = Unit then
         [ args.[0] ]
     else args
 //    args |> List.filter (fun i ->
@@ -366,7 +367,7 @@ module Query =
         let fn e =
             match e with
             | Fable.IdentExpr i when (List.contains i.Name idents) ->
-                captured <- captured.Add (i.Name, e)
+                captured <- captured.Add (i.Name, i)
             | _ -> ()
             None
         Fable.Transforms.AST.visitFromOutsideIn fn expr |> ignore
@@ -375,6 +376,23 @@ module Query =
         let isCapture e = match e with | Fable.IdentExpr i when (List.contains i.Name idents) -> true | _ -> false
         // Fable.Transforms.AST.deepExists isCapture expr
         Fable.Transforms.AST.deepExists isCapture expr
+    let rec requiresRefCell ctx generics (t: Fable.Type) =
+        match t with
+        | String
+        | Boolean
+        | Char
+        | List _
+        | Number _ -> true
+        | Tuple (_, isStruct)
+        | AnonymousRecordType (_, _, isStruct)
+        | Option (_, isStruct) -> isStruct
+        | DeclaredType(entityRef, genericArgs) ->
+            ctx.db.TryGetEntity(entityRef)
+            |> Option.map _.IsValueType
+            |> Option.defaultValue false
+        | GenericParam (name, isMeasure, constraints) ->
+            requiresRefCell ctx generics (resolveType generics t)
+        | _ -> false
     let isEmptyDelegate (idents: Ident list) (body: Expr) =
         match body with
         | Call(callee, callInfo, ``type``, sourceLocationOption) ->
@@ -409,11 +427,27 @@ module Query =
 
             match com.TryGetEntity(entityRef.FullName) with
             | Some ent ->
-                let fields = ent.FSharpFields |> List.map (fun f -> f.FieldType)
+                let fields =
+                    if ent.IsFSharpUnion then
+                        ent.UnionCases
+                        |> List.map _.UnionCaseFields
+                        |> List.collect id
+                    else
+                        ent.FSharpFields
+                    |> List.map _.FieldType
+                // let fields =
+                //     ent.FSharpFields
+                //     |> List.map _.FieldType
+                let interactionsFromFields =
+                    fields
+                    |> List.map (pullGenericTypeUsages generics database.contents)
+                    |> List.collect id
                 if not (ent.FullName.StartsWith("Microsoft.FSharp.Core.PrintfFormat")) && unresolvedGenerics.Length > 0 then
                     (GenericInteraction.Instantiation (entityRef.FullName, List.map (resolveType generics) genericArgs))
                     :: List.collect (genericTypesUsedByType generics com) fields
-                else []
+                else
+                    List.collect (genericTypesUsedByType generics com) fields
+                |> fun more -> interactionsFromFields @ more
             | None -> []
         | Array(genericArg, arrayKind) ->
             match arrayKind with
@@ -1099,6 +1133,14 @@ type Print =
         _type.FullName.Replace(".", "_").Replace("Tmds_Linux_s", "")
     static member compiledTypeName (_type: MemberFunctionOrValue) =
         _type.FullName.Replace(".", "_").Replace("Tmds_Linux_s", "")
+    static member unionCaseName (transformType: _ -> C.Type, genArgs, case: UnionCase) =
+        let str = genArgs |> List.map (transformType >> _.ToNameString()) |> String.concat "_"
+        case.FullName
+            .Replace($"`{genArgs.Length}", $"__{str}")
+            .Replace(".", "_")
+    static member unionName (transformType: _ -> C.Type, genArgs, ent: Entity) =
+        let genArgsTypes = genArgs |> List.map (transformType >> _.ToNameString()) |> String.concat "_"
+        ent.FullName.Replace($"`{genArgs.Length}", $"__{genArgsTypes}").Replace(".", "_")
     static member compiledTypeName (generics: C.Type list, fullName: string) =
 //        _type.GenericParameters
 //        let generics = _type.GenericParameters |> List.zip generics
@@ -1112,7 +1154,13 @@ type Print =
                 .Replace($"`{generics.Length}", $"__{genericParamTypeString}")
                 .Replace($"${generics.Length}", $"__{genericParamTypeString}")
         // .Replace("Tmds_Linux", "")
-        if className.StartsWith "Fable_" then className.Substring("Fable_".Length) else className
+        // if className.StartsWith "Fable_" then className.Substring("Fable_".Length) else className
+        match fullName with
+        | "Fable.System.Collections.Generic.Dictionary`1"
+        | "Fable.System.Collections.Generic.List`1" ->
+            className.Substring("Fable_".Length)
+        | _ ->
+            className
     static member compiledTypeName (generics: C.Type list, _type: EntityRef) =
         Print.compiledTypeName (generics, _type.FullName)
     static member compiledMethodName (m: MemberDecl, generics: C.Type list, _type: EntityRef) =
@@ -1137,7 +1185,12 @@ type Print =
         if m.Name.Contains "ctor" then
             match m.MemberRef with
             | MemberRef(declaringEntity, memberRefInfo) ->
-                C.Ptr (C.EmitType (Print.compiledTypeName(generics |> List.map (snd >> (transformType generics)), declaringEntity)))
+                let isStruct =
+                    database.contents.TryGetEntity declaringEntity.FullName
+                    |> Option.map (fst >> _.IsValueType)
+                    |> Option.defaultValue false
+                C.EmitType (Print.compiledTypeName(generics |> List.map (snd >> (transformType generics)), declaringEntity))
+                |> fun e -> if isStruct then e else C.Ptr e
                 // todo
 //                C.Ptr (C.UserDefined (Print.compiledTypeName(generics, declaringEntity), declaringEntity))
 //                C.Ptr (C.EmitType "")
@@ -1192,7 +1245,11 @@ type Print =
                 match isArgValueThis generics com arg with
                 // | Some ident -> ident
                 | _ -> arg)
-            |> List.filter (fun arg -> match arg.Type with | Unit -> false | _ -> true)
+            |> fun items ->
+                if m.Args.Length > 0 then
+                    items |> List.filter (fun arg -> match arg.Type with | Unit -> false | _ -> true)
+                else
+                    items
             |> List.map (fun a -> (a.Name, transformType generics a.Type))
         let args = Print.argString args
         $"{return_type.ToTypeString()} {method_name}({args});"

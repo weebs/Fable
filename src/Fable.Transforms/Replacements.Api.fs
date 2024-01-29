@@ -81,6 +81,7 @@ let tryCall (com: ICompiler) ctx r t info thisArg args =
         | "get_Item", "System.Collections.Generic.Dictionary`2" -> None
         | ".ctor", "System.Collections.Generic.List`1" -> None
         | "Add", "System.Collections.Generic.List`1" -> None
+        | "get_Count", "System.Collections.Generic.List`1" -> None
         | "ToInt", "Microsoft.FSharp.Core.Operators" ->
             Some (TypeCast (args[0], t))
         | "GetPointerInlined", _mod when _mod = ptrModule ->

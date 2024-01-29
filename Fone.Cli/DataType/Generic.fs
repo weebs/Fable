@@ -64,15 +64,20 @@ let findGenericInteractionsFromNonGenerics (path: string) (projHeaderName: strin
 //        for kv in classDeclarations.Value do
         for kv in compilationResult.classDeclarations do
             //match database.contents.TryGetEntity(kv.Value.Entity) with
-            match compiler.TryGetEntity(kv.Value.Entity.FullName) with
-            | Some ent ->
-                let generic_instantiations =
-                    ent.FSharpFields
-                    |> List.collect (fun f -> Query.genericTypesUsedByType [] compiler f.FieldType)
-                    |> List.map (fun i -> i, Unchecked.defaultof<_>)
-                if generic_instantiations.Length > 0 then
-                    generic_interactions <- generic_instantiations @ generic_interactions
-            | _ -> () // todo: add TryGetEntity to MyCompiler
+            let generic_instantiations =
+                let t = DeclaredType (kv.Value.Entity, [])
+                Query.genericTypesUsedByType [] compiler t
+                |> List.map (fun i -> i, Fable.Value (ValueKind.UnitConstant, None))
+            generic_interactions <- generic_instantiations @ generic_interactions
+            // match compiler.TryGetEntity(kv.Value.Entity.FullName) with
+            // | Some ent ->
+            //     let generic_instantiations =
+            //         ent.FSharpFields
+            //         |> List.collect (fun f -> Query.genericTypesUsedByType [] compiler f.FieldType)
+            //         |> List.map (fun i -> i, Unchecked.defaultof<_>)
+            //     if generic_instantiations.Length > 0 then
+            //         generic_interactions <- generic_instantiations @ generic_interactions
+            // | _ -> () // todo: add TryGetEntity to MyCompiler
     generic_interactions
 
 
@@ -160,145 +165,11 @@ let generateGenericImplementations context path projHeaderName : string * Generi
         for usage in temp do
             match fst usage with
             | Closure(captured, types, ``return``) ->
-                // added_types
-                let capturedArgsTypes = captured |> List.map (transformType []) |> List.map _.ToTypeString()
-                let invokeArgsTypes = types |> List.map (transformType []) |> List.map _.ToTypeString()
-                let invokeParamsText =
-                    [| for i in 0..(invokeArgsTypes.Length - 1) do $"{invokeArgsTypes[i]} arg_{i}" |]
-                    |> String.concat ", "
-                let callArgs =
-                    [| for i in 0..invokeArgsTypes.Length - 1 do $"arg_{i}" |]
-                    |> String.concat ", "
-                let capturedArgs =
-                    [| for i in 0..capturedArgsTypes.Length - 1 do $"var_{i}" |]
-                    |> String.concat ", "
-                let capturedParamsText =
-                    [| for i in 0..capturedArgsTypes.Length - 1 do $"{captured[i] |> transformType [] |> _.ToTypeString()} var_{i}" |]
-                    |> String.concat ", "
-                let variables =
-                    [|
-                    for i in 0..capturedArgsTypes.Length - 1 do
-                        if requiresTracking [] captured[i] then
-                            $"{capturedArgsTypes[i]} var_{i} = ({capturedArgsTypes[i]})this$->capturedArgs[{i}];"
-                        else
-                            $"{capturedArgsTypes[i]} var_{i} = *({capturedArgsTypes[i]}*)this$->capturedArgs[{i}];"
-                    |]
-                    |> String.concat "\n    "
-                let ctorCapturing =
-                    [|
-                    for i in 0..captured.Length - 1 do
-                        let t = transformType [] captured[i]
-                        if requiresTracking [] captured[i] then
-                            yield $"{t.ToTypeString()} ptr_{i} = var_{i};"
-                            yield $"var_{i}->__refcount++;"
-                        else
-                            yield $"{t.ToTypeString()}* ptr_{i} = malloc(sizeof({t.ToTypeString()}));"
-                            yield $"*ptr_{i} = var_{i};"
-                        yield $"this$->capturedArgs[{i}] = (void*)ptr_{i};"
-                    |]
-                    |> String.concat "\n    "
-                let destructorStatements =
-                    [|
-                        for i in 0..captured.Length - 1 do
-                            if requiresTracking [] captured[i] then
-                                let t = transformType [] captured[i]
-                                match t with
-                                | Fable.C.AST.C.Ptr t ->
-                                    $"Runtime_end_var_scope(this$->capturedArgs[{i}], {t.ToNameString()}_Destructor);"
-                                | _ ->
-                                    $"Runtime_end_var_scope(this$->capturedArgs[{i}], {t.ToNameString()}_Destructor);"
-                            else
-                                $"free(this$->capturedArgs[{i}]);"
-                    |]
-                    |> String.concat "\n    "
-                let returnType = transformType [] ``return`` |> _.ToTypeString()
-                let ptrType =
-                    let argsTypesStrings =
-                        capturedArgsTypes @ invokeArgsTypes
-                    $"""{returnType} (*)({argsTypesStrings |> String.concat ", "})"""
-                let typeName = Print.closureTypeName (transformType [], captured, types, ``return``)
-                let decl = $"""
-typedef struct {typeName} {{
-    // unsigned char __refcount;
-    void** capturedArgs;
-    void* fp;
-}} {typeName};
-                """
-                // todo: type safety for FP
-                let impl = $"""
-{typeName}* {typeName}_ctor({capturedParamsText}, void* fp) {{
-    {typeName}* this$ = ({typeName}*)malloc(sizeof({typeName}));
-    this$->capturedArgs = malloc(sizeof(void*) * {captured.Length});
-    {ctorCapturing}
-    this$->fp = fp;
-}}
-void {typeName}_Destructor(void* data) {{
-    {typeName}* this$ = ({typeName}*)data;
-    {destructorStatements}
-    free(this$->capturedArgs);
-    free(this$);
-}}
-{returnType} {typeName}_Invoke(void* closure, {invokeParamsText}) {{
-    {typeName}* this$ = ({typeName}*)closure;
-    {variables}
-    return (({ptrType})this$->fp)({capturedArgs}, {callArgs});
-}}
-                """
-                generic_implementations.Add(decl, impl)
+                let info = Func.writeClosure captured types ``return``
+                generic_implementations.Add(info.decl, info.code)
             | Func(types, ``return``) ->
-                let typeName = Print.funcTypeName (transformType [], types, ``return``)
-                let returnType = transformType [] ``return``
-                let returnTypeName = returnType |> _.ToTypeString()
-                let argsTypes = types |> List.map (transformType [])
-                let argsTypesStrings = argsTypes |> List.map _.ToTypeString()
-                let paramsText =
-                    [| for i in 0..(argsTypesStrings.Length - 1) do $"{argsTypesStrings[i]} arg_{i}" |]
-                    |> String.concat ", "
-                let callArgs =
-                    [| for i in 0..argsTypesStrings.Length - 1 do $"arg_{i}" |]
-                    |> String.concat ", "
-                let ptrType0 =
-                    $"""{returnTypeName} (*)({argsTypesStrings |> String.concat ", "})"""
-                let ptrType1 =
-                    $"""{returnTypeName} (*)({("void*" :: argsTypesStrings) |> String.concat ", "})"""
-                let decl = $"""
-typedef struct {typeName} {{
-    unsigned char __refcount;
-    int tag;
-    void* fp;
-    void* data;
-    void* data_destructor;
-}} {typeName};
-                """
-                // todo: autorelease?
-                let impl = $"""
-void {typeName}_Destructor({typeName}* this$) {{
-    if (this$->tag == 1) {{
-        ((void (*)(void*))this$->data_destructor)(this$->data);
-    }}
-    free(this$);
-}}
-{typeName}* {typeName}_ctor(int tag, void* fp, void* data, void* data_destructor) {{
-    {typeName}* this$ = malloc(sizeof({typeName}));
-    this$->__refcount = 1;
-    this$->fp = fp;
-    this$->tag = tag;
-    if (tag == 1) {{
-        this$->fp = fp;
-        this$->data = data;
-        this$->data_destructor = data_destructor;
-    }}
-    return Runtime_autorelease(this$, {typeName}_Destructor);
-}}
-{returnTypeName} {typeName}_Invoke({typeName}* this$, {paramsText}) {{
-    if (this$->tag == 0) {{
-        return (({ptrType0})this$->fp)({callArgs});
-    }} else {{
-        return (({ptrType1})this$->fp)(this$->data, {callArgs});
-    }}
-}}
-"""
-                generic_implementations.Add(decl, impl)
+                let info = Func.write types ``return``
+                generic_implementations.Add(info.decl, info.code)
             | Tupl (args, is_struct) ->
                 tuples.Add args
             | ValueOption arg ->
@@ -446,8 +317,8 @@ void {typeName}_Destructor({typeName}* this$) {{
                         |> List.map Option.get
                     generic_interactions <- methods @ generic_interactions
                     let fields = ent.FSharpFields
-                    let _memberFunctionsAndValues = ent.MembersFunctionsAndValues
-                    let _mems = classDecl.AttachedMembers
+                    // let _memberFunctionsAndValues = ent.MembersFunctionsAndValues
+                    // let _mems = classDecl.AttachedMembers
                     let generic_types =
                         (List.map (transformType generics) genericParams)
                     let name = Print.compiledTypeName(generic_types, classDecl.Entity)
@@ -480,8 +351,16 @@ void {typeName}_Destructor({typeName}* this$) {{
                         printfn "%s" name
                         printfn "%A" classDecl
                         printfn "%A" classDecl.Entity
-                    declarations.AppendLine <| Core.writeStruct ent (name, compiledFields |> List.map (fun (_a, _b) -> (_b,_a))) // <3
-                    |> ignore
+                    if ent.IsFSharpUnion then
+                        let info = (ent |> Core.writeUnionToBuilder genericParams declarations)
+                        generic_implementations.Add(info.decl, info.code)
+                    else
+                        // let values = ent.MembersFunctionsAndValues |> Seq.toArray
+                        let ctor =
+                            database.contents.TryGetMemberByRef (ent.FullName, ".ctor")
+                            |> Option.map (fun (ent, file, mem, fsMember) -> mem)
+                        declarations.AppendLine <| Core.writeStruct generics ent ctor (name, compiledFields |> List.map (fun (_a, _b) -> (_b,_a))) // <3
+                        |> ignore
 //                     declarations.Append($"typedef struct {name} {{") |> ignore
 //                     for (_type, name) in compiledFields do
 // //                        sb.Append $" {_type.ToTypeString()} {name}; " |> ignore
@@ -490,7 +369,7 @@ void {typeName}_Destructor({typeName}* this$) {{
                     added_types.Add(name)
 
                     let constructor_name = name + "_ctor"
-                    if not ent.IsValueType then
+                    if not ent.IsValueType && not ent.IsFSharpUnion then
                         let finalizer_id = $"{name}_Destructor"
                         if not (added_functions.Contains(finalizer_id)) then
                             added_functions.Add(finalizer_id)
@@ -643,19 +522,23 @@ void {typeName}_Destructor({typeName}* this$) {{
         declarations.AppendLine "    unsigned char __refcount;" |> ignore
         tuple |> List.iteri (fun index t -> declarations.AppendLine $"    {(transformType [] t).ToTypeString()} value_{index};" |> ignore)
         declarations.AppendLine $"}} {tplName};" |> ignore
-        let calls = [|
+        let destructorCalls =
+            [|
             for i in 0..tuple.Length - 1 do
                 let t = tuple[i]
                 if requiresTracking [] t then
                     let c_type = transformType [] t
                     let c_type = c_type.ToNameString()
                     let c_type = c_type.Substring(0, c_type.Length - 3)
-                    $"    Runtime_end_var_scope(this$->value_{i}, {c_type}_Destructor);"
-        |]
-        let calls = calls |> String.concat "\n"
+                    $"Runtime_end_var_scope(this$->value_{i}, {c_type}_Destructor);"
+            |]
+            |> String.concat "\n    "
+        let destructorSig = $"void {tplName}_Destructor({tplName}* this$)"
+        declarations.AppendLine $"{destructorSig};" |> ignore
         let impl =
-            $"void {tplName}_Destructor({tplName}* this$) {{
-{calls}
+            $"
+{destructorSig} {{
+    {destructorCalls}
     free(this$);
 }}"
         let typeDecl = $"void {tplName}_Destructor({tplName}* this$);"
@@ -693,14 +576,16 @@ struct {tplName}* {tplName}_ctor({implArgs}) {{
         generic_implementations.Add ("", impl)
     // Trying to sort by the name of ValueOption instances to help with declaration order
     for option in (valueOptions |> Seq.sortBy (fun o -> (transformType [] o).ToTypeString().Split("ValueOption".ToCharArray()).Length)) do
-        let typeName = (transformType [] option).ToNameString()
+        let t = transformType [] option
+        let typeName = t.ToNameString()
         let name = "ValueOption_" + typeName
         declarations.AppendLine $"typedef struct {name} {{" |> ignore
         declarations.AppendLine $"    int tag;" |> ignore
-        declarations.AppendLine $"    {typeName} value;" |> ignore
+        declarations.AppendLine $"    {t.ToTypeString()} value;" |> ignore
         declarations.AppendLine $"}} {name};" |> ignore
     for (decl, _) in generic_implementations do
         declarations.AppendLine(decl)
         |> ignore
     declarations.ToString(), generic_implementations
     // (declarations.ToString() + "\n\n" + (sb.ToString())), generic_implementations
+type Class() = inherit System.Object()
