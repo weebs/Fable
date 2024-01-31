@@ -284,5 +284,3 @@ module rec C =
     type Struct =
         { tag: string; members: (Type * string) list } // todo: array literals like char title[50]; see: https://www.tutorialspoint.com/cprogramming/c_structures.htm
 
-type Web =
-    | Foo

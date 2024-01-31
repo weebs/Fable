@@ -128,10 +128,10 @@ let transformFunc context (name: string) (args: Ident list) (funcBody: Expr) (ge
                         if requiresTracking generics expr.Type then
                             // todo: Assign to toReturn
                             // C.Return (C.Expr.Emit $"Runtime_autorelease({Compiler.writeExpression cExpr})")
-                            (C.Emit $"__toReturn = {Compiler.writeExpression cExpr};")
+                            (C.Emit $"__toReturn = {Writer.writeExpression cExpr};")
                             (C.Emit "__toReturn->__refcount++;")
                         else
-                            (C.Emit $"__toReturn = {Compiler.writeExpression cExpr};")
+                            (C.Emit $"__toReturn = {Writer.writeExpression cExpr};")
                             // C.Return (C.Expr.Emit (Compiler.writeExpression cExpr))
                     ]
                 | C.Conditional(guard, ifTrue, ifFalse) ->
@@ -589,7 +589,7 @@ module Generics =
         let fields = getFields c
         let name_with_args_added = c.Entity.FullName.Replace(".", "_").Replace($"`{macroArgs.Length}", "__" + System.String.Join("_", macroArgs))
         $"""#define {macro_name}({macro_args_text}) typedef struct {name_with_args_added} {{\
-    {System.String.Join(";\\\n    ", fields |> List.map Compiler.writeStructField) + ";\\\n"}\
+    {System.String.Join(";\\\n    ", fields |> List.map Writer.writeStructField) + ";\\\n"}\
     }} {name_with_args_added};"""
     let addMethodImplementation context (generics: (string * Type) list) (entityName: string) (isValueType: bool) (genericParams: Type list) (fableMethodName: string) (member_declaration: MemberDecl) : string * string * C.FunctionInfo =
         if fableMethodName.Contains "ctor" then

@@ -102,8 +102,7 @@ module Compiler =
         |]
         let header =
             let com = CompilerImpl(projCracked.SourceFilePaths |> Seq.last, project, options, fableLibDir)
-            Fable.C.Writer.writeModuleHeaderFile
-                Fable.C.File.runtime
+            Fable.C.ProjectWriter.writeModuleHeaderFile
                 {
                     com = com
                     currentFile = "Program.fs"; idents = []

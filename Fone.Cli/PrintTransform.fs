@@ -1,4 +1,4 @@
-module Fable.C.Print
+module Fable.C.PrintTransform
 
 open Fable
 open Fable.AST
@@ -26,7 +26,7 @@ let format (ctx: C99Compiler.Context) transformType transformExpr transformValue
             C.Call ("printf", [ (transformExpr ctx generics) callInfo.Args[0] ])
     else
         let result = transformExpr ctx generics callInfo.Args[0]
-        let mutable (C.Value (C.CStr s)) = result 
+        let mutable (C.Value (C.CStr s)) = result
         for i in 0..(args.Length - 1) do
             s <- s.Replace($"{{{i}}}", (fst args[i]).PrintfType)
         C.Call ("printf", (C.Value (C.CStr (s + "\\n"))) :: (args |> List.map snd))

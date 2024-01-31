@@ -1200,7 +1200,7 @@ type Print =
         else
             (m.Body.Type |> (transformType generics))
     static member argString (args: (string * C.Type) list) =
-        Compiler.writeFunctionArgs args
+        Writer.writeFunctionArgs args
     static member compiledMethodName (ident: string, generics: C.Type list, _type: Entity) =
         Print.compiledMethodName(ident, generics, _type)
     static member compiledMethodName (ident: string, generics: C.Type list, _type: EntityRef) =

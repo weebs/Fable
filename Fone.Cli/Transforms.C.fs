@@ -74,11 +74,11 @@ let rec emitEvaluateStringTemplate ctx (com: Type.ICompiler) (generics: (string 
             // todo: probably a source of bugs
             | _ -> ident.Name
         | Fable.Operation(operationKind, [], ``type``, sourceLocationOption) ->
-            Compiler.writeExpression (transformOperation ctx generics operationKind ``type``)
+            Writer.writeExpression (transformOperation ctx generics operationKind ``type``)
         | Fable.TypeCast(expr, ``type``) -> evaluateValue expr
         | Fable.Emit(emitInfo, ``type``, sourceLocationOption) ->
             let result = transformExpr ctx generics value
-            Compiler.writeExpression result
+            Writer.writeExpression result
         | Fable.Lambda(arg, body, name) ->
             let args, body = unwrapLambda arg body
             if Query.isEmptyDelegate args body then
@@ -308,7 +308,7 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
         else
             let tplName = tupleName generics (values |> List.map _.Type)
             C.Call ($"{tplName}_ctor", values |> List.map (transformExpr ctx generics))
-            |> Compiler.writeExpression
+            |> Writer.writeExpression
             |> C.ValueKind.Emit
     | Fable.NewOption(exprOption, ``type``, isStruct) ->
         // ValueSome
@@ -361,7 +361,7 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
                     //     let value = Compiler.writeExpression (transformExpr ctx generics fieldExpr)
                     //     inline_acquire_object type_name value "*"
                     // else
-                        Compiler.writeExpression (transformExpr ctx generics fieldExpr))
+                        Writer.writeExpression (transformExpr ctx generics fieldExpr))
                 |> fun values -> System.String.Join(", ", values)
             // todo: DU ctor and autorelease
             let result = $"({union_name}){{ 0, {tag}, {{ .{caseInfo.Name} = {{ {values} }} }} }}"
@@ -412,7 +412,7 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
             if entity.IsValueType then value
             // else C.ValueKind.Emit $"({structName}*)Runtime_alloc_copy(sizeof({structName}), (void*)&{Compiler.valueToString value})"
             // else C.ValueKind.Emit $"Runtime_alloc_copy(sizeof({structName}), (void*)&{Compiler.valueToString value})"
-            else C.ValueKind.Emit $"{structName}_ctor({Compiler.valueToString value})"
+            else C.ValueKind.Emit $"{structName}_ctor({Writer.valueToString value})"
         )
         |> Option.defaultWith (fun () ->
             printfn $"============= trouble finding entity ref {entityRef.FullName} {entityRef} ================"
@@ -443,7 +443,7 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
                 match value with | Fable.TypeCast(expr, Any) -> expr | _ -> value
             // todo: I may need to remove this in the future when actually creating array literals
             let array_values =
-                values |> List.map (unwrapCast >> transformExpr ctx generics) |> fun c_values -> String.Join(", ", c_values |> List.map (fun c_value -> Compiler.writeExpression c_value))
+                values |> List.map (unwrapCast >> transformExpr ctx generics) |> fun c_values -> String.Join(", ", c_values |> List.map (fun c_value -> Writer.writeExpression c_value))
 //            C.ValueKind.Emit <| $"{{{array_values}}}"
             let tName = (transformType generics typ).ToNameString()
             let t2 = (transformType generics typ).ToTypeString()
@@ -454,13 +454,13 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
 
             let t = (transformType generics typ)
             let tName = $"{t.ToNameString()}"
-            let argsTxt = values |> List.map (transformExpr ctx generics) |> List.map Compiler.writeExpression |> String.concat ", "
+            let argsTxt = values |> List.map (transformExpr ctx generics) |> List.map Writer.writeExpression |> String.concat ", "
             C.ValueKind.Emit $"System_Array__{tName}_ctor({values.Length}, ( ( {t.ToTypeString()}[{values.Length}] ) {{{argsTxt}}} ) )"
             // C.ValueKind.Emit $"({{ int length = {length}; {t2} data[] = {data}; void* copy = malloc({length}); memcpy(copy, data, length); {arrType}* array = malloc(sizeof({arrType})); array->length = {values.Length}; array->data = copy; array; }})"
             // C.ValueKind.Emit $"(void*)0 /* {{ %A{array_values} }} */"
         | Fable.ArrayAlloc size ->
             // todo: Won't this break with sizes that contain expressions like IfThenElse
-            let size_string = transformExpr ctx generics size |> Compiler.writeExpression
+            let size_string = transformExpr ctx generics size |> Writer.writeExpression
             // C.ValueKind.Emit $"&(struct System_Array__{array_type_name}){{ .data = malloc(sizeof({array_type_name}) * {size_string}), .length = {size_string} }}"
             C.ValueKind.Emit $"System_Array__{array_type_name}_alloc({size_string})"
         | Fable.ArrayFrom expr ->
@@ -473,7 +473,7 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
         C.ValueKind.Bool value
     | Fable.StringTemplate(exprOption, parts, values) ->
         let sprintf_args = transformStringTemplate ctx ctx.db generics parts values
-        let inner = Compiler.writeExpression (C.Call ("sprintf", C.Expr.Emit "buffer" :: sprintf_args))
+        let inner = Writer.writeExpression (C.Call ("sprintf", C.Expr.Emit "buffer" :: sprintf_args))
         C.ValueKind.Emit $"({{ char buffer[2048]; {inner}; buffer;}})"
 //        C.BlockExpr [
 //            C.Emit "char buffer[2048];"
@@ -718,20 +718,20 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
                 C.Expr.Unary (C.UnaryOp.Ref, transformExpr ctx generics body)
             | _ ->
                 C.Expr.Unary (C.UnaryOp.Ref, transformExpr ctx generics callInfo.Args.[0])
-        | "toConsole", "String.c" -> Print.toConsole ctx ctx.db transformType transformExpr transformValueKind generics callInfo
+        | "toConsole", "String.c" -> PrintTransform.toConsole ctx ctx.db transformType transformExpr transformValueKind generics callInfo
         | "isNullOrEmpty", "String.c" ->
             let e = transformExpr ctx generics callInfo.Args[0]
-            let e = Compiler.writeExpression e
+            let e = Writer.writeExpression e
             let a = C.Unary (C.Not, C.Binary (C.Eq, C.Expr.Emit $"{e}[0]", C.Expr.Emit "'\0'"))
             let b = C.Unary (C.Not, C.Binary (C.Eq, C.Expr.Emit $"{e}", C.Expr.Emit "(void*)0"))
             C.Expr.Binary (C.And, a, b)
         | "toString", "Types.c" ->
             C.Call ((callInfo.Args[0].Type |> transformType generics).ToNameString() + "_toString", [ callInfo.Args[0] |> transformExpr ctx generics ])
-        | "format", "String.c" -> Print.format ctx transformType transformExpr transformValueKind generics callInfo
+        | "format", "String.c" -> PrintTransform.format ctx transformType transformExpr transformValueKind generics callInfo
         | "OfNativeIntInlined", "Microsoft.FSharp.NativeInterop.NativePtrModule.c" ->
             C.Expr.TypeCast (transformType generics expr.Type, (transformExpr ctx generics callInfo.Args.[0]))
         | "WritePointerInlined", "Microsoft.FSharp.NativeInterop.NativePtrModule.c" ->
-            C.Expr.Emit $"*({Compiler.writeExpression (transformExpr ctx generics callInfo.Args.[0])}) = {Compiler.writeExpression (transformExpr ctx generics callInfo.Args.[1])}"
+            C.Expr.Emit $"*({Writer.writeExpression (transformExpr ctx generics callInfo.Args.[0])}) = {Writer.writeExpression (transformExpr ctx generics callInfo.Args.[1])}"
         | "ReadPointerInlined", "Microsoft.FSharp.NativeInterop.NativePtrModule.c" ->
             C.Expr.Unary (C.Deref, (transformExpr ctx generics callInfo.Args.[0]))
         | "ToNativeIntInlined", "Microsoft.FSharp.NativeInterop.NativePtrModule.c" ->
@@ -905,7 +905,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
         | Value(StringTemplate(exprOption, parts, values), sourceLocation) ->
             let sprintf_args = transformStringTemplate ctx ctx.db generics parts values
             let sprintf_args = transformStringTemplate ctx ctx.db generics parts values
-            let inner = Compiler.writeExpression (C.Call ("sprintf", C.Expr.Emit "buffer" :: sprintf_args))
+            let inner = Writer.writeExpression (C.Call ("sprintf", C.Expr.Emit "buffer" :: sprintf_args))
             C.Expr.Emit $"({{ char buffer[2048]; {inner}; buffer;}})"
     //        C.BlockExpr [
     //            C.Emit "char buffer[2048];"
@@ -977,7 +977,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                 match e.Type with
                 | String ->
                     C.Expr.Emit <|
-                        "strlen(" + (Compiler.writeExpression (transformExpr ctx generics e)) + ")"
+                        "strlen(" + (Writer.writeExpression (transformExpr ctx generics e)) + ")"
                 // | Array (typ, kind: ArrayKind) ->
                 //     C.DerefMemberAccess(transformExpr ctx generics expr, info.Name)
                 | _ -> accessType (transformExpr ctx generics e, info.Name)
@@ -1067,7 +1067,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                         match value with
                         | Value(NewArray(ArrayValues values, ``type``, arrayKind), sourceLocationOption) ->
                             let values = values |> List.map (fun value -> match value with | TypeCast(expr, Any) -> expr | _ -> value)
-                            C.Expr.Emit (values |> List.map (fun value -> (transformExpr ctx generics value) |> Compiler.writeExpression) |> fun call_args -> String.Join(", ", call_args))
+                            C.Expr.Emit (values |> List.map (fun value -> (transformExpr ctx generics value) |> Writer.writeExpression) |> fun call_args -> String.Join(", ", call_args))
                         | _ ->
                             C.Expr.Emit ident.Name
                     | _ ->
@@ -1948,7 +1948,7 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
                         // todo: reassign
                         // [ C.Emit $"Runtime_swap_value((void**)&{Compiler.writeExpression _member}, {Compiler.writeExpression e});" ]
                         [
-                            C.Emit $"Runtime_swap_value((void**)&{Compiler.writeExpression _member}, {Compiler.writeExpression e}, {valueType.ToNameString()}_Destructor);"
+                            C.Emit $"Runtime_swap_value((void**)&{Writer.writeExpression _member}, {Writer.writeExpression e}, {valueType.ToNameString()}_Destructor);"
                             // C.Assignment ((accessType ((transformExpr ctx generics expr), fieldName)), transformExpr ctx generics value)
                         ]
                     else
@@ -1975,7 +1975,7 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
                     let _value = transformExpr ctx generics value
                     [
                         if requiresTracking generics value.Type then
-                            C.Emit $"Runtime_reassign_var((void**)&{Compiler.writeExpression e}, {Compiler.writeExpression _value});"
+                            C.Emit $"Runtime_reassign_var((void**)&{Writer.writeExpression e}, {Writer.writeExpression _value});"
                         else
                             C.Assignment (e, _value);
                     ]

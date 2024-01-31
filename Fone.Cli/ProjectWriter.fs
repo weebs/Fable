@@ -1,4 +1,4 @@
-﻿module rec Fable.C.Writer
+﻿module rec Fable.C.ProjectWriter
 
 
 open System.Text
@@ -154,7 +154,7 @@ let writeMainFile (projHeaderName: string) (actualMain: string option) =
     let main: C.FunctionInfo = createMainFunction actualMain
 
     $"// #include \"{projHeaderName}\"\n\n" +
-    (Compiler.writeFunction (SourceBuilder()) main)
+    (Writer.writeFunction (SourceBuilder()) main)
 
 let echoType (t: Type) = sprintf "| Fable.Type: %A" t
 
@@ -171,7 +171,7 @@ let echoType (t: Type) = sprintf "| Fable.Type: %A" t
 //         .AppendLine("#include <stdlib.h>")
 //         .AppendLine("")
 //     |> ignore
-let writeModuleHeaderFile runtime context (projPath: string) =
+let writeModuleHeaderFile context (projPath: string) =
     let buildDir = IO.Path.GetDirectoryName(projPath)
     let projHeaderName = IO.Path.GetFileNameWithoutExtension(projPath) + ".h"
     let srcDir = Path.Combine(buildDir, "build")
@@ -239,11 +239,13 @@ let writeModuleHeaderFile runtime context (projPath: string) =
         .AppendLine("")
     |> ignore
     // sb.AppendLine("static thread_local int __thread_context = 0;")
+    // todo: thread_local not working
     sb.AppendLine("static int __thread_context = 0;")
     |> ignore
-    sb.AppendLine runtime
+    sb.AppendLine Runtime.code
     |> ignore
-    let (generic_strings, generic_implementations) = Generic.generateGenericImplementations context path projHeaderName
+    let (generic_strings, generic_implementations) =
+        Generic.generateGenericImplementations context path projHeaderName
     do
         // todo: Generic includes file or inclouded
         // appendModuleIncludes sb
@@ -255,7 +257,6 @@ let writeModuleHeaderFile runtime context (projPath: string) =
         sb.AppendLine($"void {functionInfo.id}();") |> ignore
     sb.AppendLine("") |> ignore
 
-    // Generate #defi
     let methods_sb = CompiledOutputBuilder()
 
     // Write out the relevant header info for each file in the project
@@ -285,15 +286,12 @@ let writeModuleHeaderFile runtime context (projPath: string) =
     let init_sb = StringBuilder()
     let module_include_name = IO.Path.GetFileName(path)
     // init_sb.AppendLine($"#include \"{module_include_name}\"\n") |> ignore
-    init_sb.AppendLine(Compiler.writeFunction (SourceBuilder ()) init) |> ignore
+    init_sb.AppendLine(Writer.writeFunction (SourceBuilder ()) init) |> ignore
     io.file.write(path.Replace(module_include_name, "fable-init.c"), init_sb.ToString())
     let fable_init_c = io.files[path.Replace(module_include_name, "fable-init.c")]
     print.printfn $"{DateTime.Now.ToLongTimeString()} Finishing writing {module_include_name}"
     let file_output =
         let sb = CompiledOutputBuilder()
-        // for (_, text) in generic_implementations do
-        //     sb.AppendLine text
-        //     |> ignore
         io.files[path]
         + "\n\n"
         + (sb.ToString())
@@ -322,10 +320,6 @@ let writeModuleHeaderFile runtime context (projPath: string) =
         else
             None
 
-//    let projName = IO.Path.GetFileNameWithoutExtension(database.contents.ProjectFile).Replace(".", "_")
-//    let headerName = projName + ".h"
-//    let makefileName = projName + ".sh"
-//    let makefilePath = path.Replace(".h", makefileName)
     let makefilePath = path.Replace(".h", ".sh")
     let files = System.String.Join(" ", compiler.Files |> Seq.map (fun f -> IO.Path.GetFileName(f.Replace(".fs", ".fs.c"))))
 
@@ -397,7 +391,7 @@ let writeModuleHeaderFile runtime context (projPath: string) =
     {| file = file_output; main = project_intmain_file; init = fable_init_c; generics = generics_file |}
 
 let writeNesHeader context (projPath: string) =
-    let result = writeModuleHeaderFile "" context projPath
+    let result = writeModuleHeaderFile context projPath
     let file =
         result.file.Replace("#include <stdio.h>
     #include <stdbool.h>

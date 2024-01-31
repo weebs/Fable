@@ -1,4 +1,4 @@
-module Fable.C.Compiler
+module Fable.C.Writer
 
 open System.Text
 open AST
@@ -19,16 +19,6 @@ let mutable writeExpression: C.Expr -> string = Unchecked.defaultof<_>
 
 let __struct = ""
 
-// type Context =
-//     { compiler: Fable.Compiler
-//       includes: string list
-//       compiled_module: Map<string, C.ModuleDeclaration>
-//       class_generics: Map<string, Fable.AST.Fable.ClassDecl>
-//       generic_defs: Map<string, Fable.AST.Fable.MemberDecl>
-//       generic_impls: Map<string, (C.Type list) list>
-//       generic_structs: Map<string, (C.Type list) list>
-//       generics: Map<string, C.Type> }
-//
 // module Context =
 //     // todo: add the C module stuff here
 //     let addGenericImpl (name: string) (args: C.Type list) (context: Context) =
@@ -56,15 +46,6 @@ type FSharp.Collections.List<'t> with
             List.skip i this
         else
             []
-//module Json =
-//    open System.Text.Json
-//    open System.Text.Json.Serialization
-//
-//    let options = JsonSerializerOptions()
-//    options.Converters.Add(JsonFSharpConverter())
-//
-//    let serialize o = JsonSerializer.Serialize(o, options)
-//    let deserialize<'t> (s: string) = JsonSerializer.Deserialize<'t>(s, options)
 
 let writeArg ((name, _type): string * C.Type) =
     match _type with
@@ -309,29 +290,6 @@ let doRaii (body: C.Statement list) (sb: SourceBuilder) =
         | _ -> ()
         // sb.AppendLine()
         printfn $"{i}"
-//        | Some (typeName, varName) ->
-//            let ident = C.Ident ({
-//                Name = varName; Type = Unchecked.defaultof<_>; IsMutable = false; IsThisArgument = false; IsCompilerGenerated = false; Range = None
-//            }, false)
-//            sb.AppendLine ($"add_to_root(root_{root}, (void**)&{varName}, &{typeName}_Finalizer);")
-//            sb.AppendLine ($"Runtime_add_to_root(&root, (void**)&{varName}, &{typeName}_Finalizer);")
-//            |> ignore
-//                sb.AppendStatement (C.Expression (C.Call ($"{typeName}__Finalize", [ ident ])))
-//                |> ignore
-        // | _ ->
-            // ()
-//    if useRoot then ()
-//        sb.AppendLine $"// msg about root {root}"
-
-//        sb
-//            .AppendLine($"Runtime_release_root(&root);")
-
-//            .AppendLine($"free(root);")
-//            .AppendLine($"release(root_{root});")
-//            .AppendLine($"free(root_{root});")
-//        |> ignore
-
-//        sb.AppendStatement (C.Statement.Declaration ( {| _type = C.Type.UserDefined |}))
 
 let rec _writeStmt (statement: C.Statement) : SourceBuilder =
     let sb = SourceBuilder()

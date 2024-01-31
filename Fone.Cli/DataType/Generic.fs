@@ -32,7 +32,6 @@ let findGenericInteractionsFromNonGenerics (path: string) (projHeaderName: strin
         let generic_instantiations =
             // Pulls generic types from function body
             (fst kv.Value) |> List.map (fun a -> findGenerics database.contents compiler [] a.Body) |> List.collect id |> List.collect id
-//            (findGenerics database.contents [] (fst kv.Value).Body |> List.collect id)
         if generic_instantiations.Length > 0 then
             generic_interactions <- generic_instantiations @ generic_interactions
     let compilerFiles = compiler.Files |> Array.ofSeq
@@ -43,41 +42,21 @@ let findGenericInteractionsFromNonGenerics (path: string) (projHeaderName: strin
             let decl, compiledFunction = kv.Value
             let generic_instantiations =
                 // Pulls generic types from function body
-                (findGenerics database.contents compiler [] decl.Body |> List.collect id) @ // findGenericInstantiations 1 kv.Value.Body
+                (findGenerics database.contents compiler [] decl.Body |> List.collect id)
+                @
                 // Pulls generic types from function args
-                ((List.collect (Query.genericTypesUsedByType [] compiler) (List.map (fun a -> a.Type) decl.Args)) |> List.map (fun a -> a, Unchecked.defaultof<_>))
+                ((List.collect (Query.genericTypesUsedByType [] compiler) (List.map (_.Type) decl.Args)) |> List.map (fun a -> a, Unchecked.defaultof<_>))
             // log $"====================== find results ========================"
             // log $"\n{Print.printObj 0 generic_instantiations}"
             if generic_instantiations.Length > 0 then
                 generic_interactions <- generic_instantiations @ generic_interactions
-            // todo: wtf why is this main here
-//             match decl.MemberRef with
-//             | MemberRef(declaringEntity, memberRefInfo) when decl.Name.EndsWith "main" ->
-//                 let compiledName = Print.compiledMethodName (decl, [], declaringEntity)
-//                 if isEntryPoint database.contents decl then
-// //                if compiledName.EndsWith "main" then
-//                     sb.AppendLine("int main(int argc, char** argv);") |> ignore
-//                     let s = writeMainFile projHeaderName (Some compiledName)
-//                     io.file.write(path.Replace(projHeaderName, "project_main.c"), s)
-//     //                sb.AppendLine (Compiler.writeFunction (SourceBuilder()) main) |> ignore
-//             | _ -> ()
 //        for kv in classDeclarations.Value do
         for kv in compilationResult.classDeclarations do
-            //match database.contents.TryGetEntity(kv.Value.Entity) with
             let generic_instantiations =
                 let t = DeclaredType (kv.Value.Entity, [])
                 Query.genericTypesUsedByType [] compiler t
                 |> List.map (fun i -> i, Fable.Value (ValueKind.UnitConstant, None))
             generic_interactions <- generic_instantiations @ generic_interactions
-            // match compiler.TryGetEntity(kv.Value.Entity.FullName) with
-            // | Some ent ->
-            //     let generic_instantiations =
-            //         ent.FSharpFields
-            //         |> List.collect (fun f -> Query.genericTypesUsedByType [] compiler f.FieldType)
-            //         |> List.map (fun i -> i, Unchecked.defaultof<_>)
-            //     if generic_instantiations.Length > 0 then
-            //         generic_interactions <- generic_instantiations @ generic_interactions
-            // | _ -> () // todo: add TryGetEntity to MyCompiler
     generic_interactions
 
 
@@ -114,8 +93,6 @@ let generateGenericImplementations context path projHeaderName : string * Generi
     let mutable generic_interactions = findGenericInteractionsFromNonGenerics path projHeaderName
     generic_interactions <- generic_interactions @ closureTypes.Value
     closureTypes.Value <- []
-    // for g in closureTypes.Value do
-    //     generic_interactions <
 
     let added_types = Generic.List<string>()
     let added_functions = Generic.List<string>()
@@ -124,6 +101,8 @@ let generateGenericImplementations context path projHeaderName : string * Generi
     let tuples = Generic.List<_>()
     let valueOptions = Generic.List()
     debug.log $"{DateTime.Now.ToLongTimeString()} Monomorphization step"
+    // Reduce set of interactions to contain no duplicates, then iterate thru
+    // them adding additionally found generic interactions to generic_interactions along the way
     while generic_interactions.Length > 0 do
         let temp =
             generic_interactions
@@ -146,21 +125,12 @@ let generateGenericImplementations context path projHeaderName : string * Generi
                     | GenericInteraction.ValueOption arg ->
                         (transformType [] arg).ToTypeString()
                     | GenericInteraction.Closure (captured, args, _return) ->
-                        // let captured = captured |> List.map (transformType []) |> List.map _.ToNameString() |> String.concat "_"
-                        // let args = args |> List.map (transformType []) |> List.map _.ToNameString() |> String.concat "_"
-                        // let _return = _return |> transformType [] |> _.ToNameString()
-                        // $"Closure__{captured}_{args}_{_return}"
-                        // (captured @ args @ [ _return ]) |> List.map (transformType [] >> _.ToNameString()) |> String.concat "\n"
-                        // todo: Managed to get overlap between closure type names
                         Print.closureTypeName (transformType [], captured, args, _return)
                     | GenericInteraction.Func (args, _return) ->
-                        // let args = args |> List.map (transformType []) |> List.map _.ToNameString() |> String.concat "_"
-                        // let _return = _return |> transformType [] |> _.ToNameString()
-                        // $"Func__{args}_{_return}"
                         Print.funcTypeName (transformType [], args, _return)
                 with ex ->
                     ""
-            ) // |> List.toArray
+            )
         generic_interactions <- []
         for usage in temp do
             match fst usage with
@@ -176,12 +146,6 @@ let generateGenericImplementations context path projHeaderName : string * Generi
                 valueOptions.Add arg
             | Instantiation (fullName, genericParms) when fullName = "System.Array`1" ->
                 let t = (transformType [] genericParms[0])
-                // let name = $"System_Array__{t.ToNameString()}"
-                // let t = $"System_Array__{(transformType [] genericParms[0]).ToTypeString()}"
-                // added_types.Add name
-                // added_functions.Add
-                // let (id, type_sig, function_info) = Function.buildConstructor context generics genericParams classDecl.Constructor.Value ent.FullName ent.IsValueType
-                // generic_implementations.Add((type_sig, Compiler.writeFunction (SourceBuilder()) function_info))
                 // todo: Arrays of arrays
                 // todo: I think get_Item needs to use Autorelease/increment count
                     // ex: foo[index] is used as param to function f, f calls g, value gets stored into a variable in g, and that variable goes out of scope
@@ -292,14 +256,12 @@ void {typeName}_Destructor({typeName}* this$) {{
                 if not (added_types.Contains(name)) then
                     let methods =
                         genericMethodDeclarations.Value
-                        // |> Map.filter (fun k v -> fst k = fullName)
                         |> Map.filter (fun k v -> fst k = implName)
                         |> Map.toList |> List.map snd
                         |> List.map (fun m ->
                             try
                                 let asdf =
                                     database.contents.TryGetMember(m.MemberRef)
-    //                                None
                                     |> Option.defaultWith (fun () ->
                                         match m.MemberRef with
                                         | MemberRef(declaringEntity, memberRefInfo) ->
@@ -317,16 +279,9 @@ void {typeName}_Destructor({typeName}* this$) {{
                         |> List.map Option.get
                     generic_interactions <- methods @ generic_interactions
                     let fields = ent.FSharpFields
-                    // let _memberFunctionsAndValues = ent.MembersFunctionsAndValues
-                    // let _mems = classDecl.AttachedMembers
                     let generic_types =
                         (List.map (transformType generics) genericParams)
                     let name = Print.compiledTypeName(generic_types, classDecl.Entity)
-    //                    if ent.GenericParameters.Length > 0 then
-    //                        let arg_stuffs = "__" + (System.String.Join("_", ent.GenericParameters |> List.map (fun p -> context.Value.generics[p.Name].ToNameString())))
-    //                        name.Replace($"`{ent.GenericParameters.Length}", arg_stuffs)
-    //                    else
-    //                        name
                     let compiledFields =
                         fields |> List.map (fun f -> (transformType generics f.FieldType, f.Name))
                     let genericTypesUsedByFields =
@@ -345,27 +300,15 @@ void {typeName}_Destructor({typeName}* this$) {{
                     let className = classDecl.Entity.FullName.Replace(".", "_").Split('`').[0]
                     sb.AppendLine($"// Declare_{className}({names});") |> ignore
 
-                    if name.Contains "Array" then
-                        printfn $"%A{compiledFields}"
-                    if name.Contains "Program_voidptr__struct" then
-                        printfn "%s" name
-                        printfn "%A" classDecl
-                        printfn "%A" classDecl.Entity
                     if ent.IsFSharpUnion then
                         let info = (ent |> Core.writeUnionToBuilder genericParams declarations)
                         generic_implementations.Add(info.decl, info.code)
                     else
-                        // let values = ent.MembersFunctionsAndValues |> Seq.toArray
                         let ctor =
                             database.contents.TryGetMemberByRef (ent.FullName, ".ctor")
                             |> Option.map (fun (ent, file, mem, fsMember) -> mem)
                         declarations.AppendLine <| Core.writeStruct generics ent ctor (name, compiledFields |> List.map (fun (_a, _b) -> (_b,_a))) // <3
                         |> ignore
-//                     declarations.Append($"typedef struct {name} {{") |> ignore
-//                     for (_type, name) in compiledFields do
-// //                        sb.Append $" {_type.ToTypeString()} {name}; " |> ignore
-//                         declarations.Append $" {Compiler.writeArg (name, _type)}; " |> ignore
-//                     declarations.AppendLine($"}} {name};") |> ignore
                     added_types.Add(name)
 
                     let constructor_name = name + "_ctor"
@@ -374,7 +317,7 @@ void {typeName}_Destructor({typeName}* this$) {{
                         if not (added_functions.Contains(finalizer_id)) then
                             added_functions.Add(finalizer_id)
                             let finalizer_implementation = Function.buildFinalizer generics genericParams ent
-                            generic_implementations.Add(($"void {finalizer_id}(struct {name}* this$);"), (Compiler.writeFunction (SourceBuilder()) finalizer_implementation))
+                            generic_implementations.Add(($"void {finalizer_id}(struct {name}* this$);"), (Writer.writeFunction (SourceBuilder()) finalizer_implementation))
                     if classDecl.Constructor.IsSome then
                         let generic_instantiations =
                             fields
@@ -386,7 +329,7 @@ void {typeName}_Destructor({typeName}* this$) {{
                         if not (added_functions.Contains(id)) then
                             added_functions.Add(id)
         //                    sb.AppendLine (Compiler.writeFunction (SourceBuilder()) function_info) |> ignore
-                            generic_implementations.Add((type_sig, Compiler.writeFunction (SourceBuilder()) function_info))
+                            generic_implementations.Add((type_sig, Writer.writeFunction (SourceBuilder()) function_info))
             | Instantiation(fullName, genericParams) when not (compiler.genericClassDeclarations.Value.ContainsKey fullName) ->
                 let generic_param_text_types = genericParams |> List.map (fun t -> (transformType [] t).ToTypeString())
                 generic_macro_defs_to_call.Add((fullName, generic_param_text_types))
@@ -402,8 +345,6 @@ void {typeName}_Destructor({typeName}* this$) {{
                 | Some declaringEntity ->
                     let ent: Entity option =
                         compiler.TryGetEntity(declaringEntity.FullName)
-//                        database.contents.TryGetEntity(declaringEntity)
-//                        |> Option.defaultValue (compiler.TryGetEntity(declaringEntity.FullName))
                     match ent with
                     | None ->
                         log $"======================= missing entity =============================="
@@ -424,27 +365,20 @@ void {typeName}_Destructor({typeName}* this$) {{
                                 log $"======================= todo handle non call generic member decl entity =============================="
                                 []
                         let generics = genericParams |> List.zip paramNames
-                        // let genericsName =
-                        //     genericParams
-                        //     |> List.map (fun g -> (transformType generics g).ToNameString())
-                        //     |> fun names -> String.Join("_", names)
-                        // let fullName = declaringEntity.FullName + "__" + genericsName + "_" + fableMethodName
                         for kv in genericMethodDeclarations.contents do
                             ()
-                            // todo: different log levels ? or maybe a way to send stuff back to the UI with callbacks
                             // log $"%A{kv.Key} - %A{kv.Value.MemberRef}"
                         // todo: should it be added to the dict with member ref full name?
                         let methodDeclKey = (declaringEntity.FullName, fableMethodName)
                         if genericMethodDeclarations.contents.ContainsKey(methodDeclKey) then
                             let decl = genericMethodDeclarations.contents.[(declaringEntity.FullName, fableMethodName)]
                             let (function_id, type_sig, function_info) = Function.Generics.addMethodImplementation context generics declaringEntity.FullName true genericParams fableMethodName decl
-                            generic_implementations.Add(type_sig, Compiler.writeFunction (SourceBuilder()) function_info)
+                            generic_implementations.Add(type_sig, Writer.writeFunction (SourceBuilder()) function_info)
                             added_functions.Add(function_id)
                         else
                             log $"Unable to find key for entity ({declaringEntity.FullName}, {fableMethodName})"
                     | Some ent ->
                         //log $"======================= found entity =============================="
-                        //log $"{Print.printObj 0 ent}"
                         let entityFullName = ent.FullName //.Split("`").[0]
                         let otherName = $"{ent.DisplayName}_{fableMethodName}"
                         if (genericMethodDeclarations.contents.ContainsKey (entityFullName, fableMethodName) ||
@@ -464,22 +398,21 @@ void {typeName}_Destructor({typeName}* this$) {{
                             let generics = (genericParams |> List.zip genericArgNames)
 
 
-                            //let f = transformMember generics member_declaration.Body
-                            //let c_types = List.map snd generics |> List.map (transformType generics)
                             let typeName = Print.compiledTypeName(List.map (transformType generics) genericParams, declaringEntity)
                             //let args = (member_declaration.Args |> List.map (fun i -> i.Name, transformType generics i.Type))
                             let (function_id, type_sig, function_info) = Function.Generics.addMethodImplementation context generics ent.FullName ent.IsValueType genericParams fableMethodName member_declaration
+                            // todo: Do closures defined in generic methods work already? Or is this needed
                             // let toCompile = Function.gatherAnonymousFunctions context member_declaration.Body
                             // if toCompile.Length > 0 then
                             //     ()
                             if not (added_functions.Contains(function_id)) then
-                                generic_implementations.Add(type_sig, Compiler.writeFunction (SourceBuilder()) function_info)
+                                generic_implementations.Add(type_sig, Writer.writeFunction (SourceBuilder()) function_info)
                                 added_functions.Add(function_id)
                                 let generic_instantiations =
                                     ent.FSharpFields
                                     |> List.collect (fun f -> Query.genericTypesUsedByType generics compiler f.FieldType)
                                 let generic_instantiations =
-                                    (generic_instantiations @ (List.collect (Query.genericTypesUsedByType generics compiler) (List.map (fun a -> a.Type) member_declaration.Args)))
+                                    (generic_instantiations @ (List.collect (Query.genericTypesUsedByType generics compiler) (List.map (_.Type) member_declaration.Args)))
                                     |> List.map (fun i -> i, Unchecked.defaultof<_>)
                                 if generic_instantiations.Length > 0 then
                                     generic_interactions <- generic_instantiations @ generic_interactions
@@ -492,7 +425,7 @@ void {typeName}_Destructor({typeName}* this$) {{
                                 if not (added_functions.Contains(finalizer_id)) then
                                     added_functions.Add(finalizer_id)
                                     let finalizer_implementation = Function.buildFinalizer generics genericParams ent
-                                    generic_implementations.Add(($"void {typeName}_Destructor({typeName} this$);"), (Compiler.writeFunction (SourceBuilder()) finalizer_implementation))
+                                    generic_implementations.Add(($"void {typeName}_Destructor({typeName} this$);"), (Writer.writeFunction (SourceBuilder()) finalizer_implementation))
                         else
                             // todo WHAT THE FUCK D: <
                             ()
@@ -587,5 +520,3 @@ struct {tplName}* {tplName}_ctor({implArgs}) {{
         declarations.AppendLine(decl)
         |> ignore
     declarations.ToString(), generic_implementations
-    // (declarations.ToString() + "\n\n" + (sb.ToString())), generic_implementations
-type Class() = inherit System.Object()

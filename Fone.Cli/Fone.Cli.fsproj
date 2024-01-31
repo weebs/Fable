@@ -7,14 +7,15 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <Compile Include="Runtime.fs" />
         <Compile Include="Imports.fs" />
         <Compile Include="SourceBuilder.fs" />
         <Compile Include="AST.fs" />
         <Compile Include="C99Compiler.fs" />
-        <Compile Include="Compiler.fs" />
+        <Compile Include="Writer.fs" />
         <Compile Include="Helpers.fs" />
-        <Compile Include="Print.fs" />
-        <Compile Include="ReplaceExpr.fs" />
+        <Compile Include="PrintTransform.fs" />
+        <Compile Include="Replacements.C.fs" />
         <Compile Include="Transforms.C.fs" />
         <Compile Include="DataType\State.fs" />
         <Compile Include="DataType\DataType.fs" />
@@ -22,7 +23,7 @@
         <Compile Include="DataType\Function.fs" />
         <Compile Include="DataType\Func.fs" />
         <Compile Include="DataType\Generic.fs" />
-        <Compile Include="Program.fs" />
+        <Compile Include="ProjectWriter.fs" />
         <Compile Include="File.fs" />
         <Compile Include="Database.fs" />
         <Compile Include="Cli.fs" />
