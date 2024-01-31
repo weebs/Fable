@@ -136,6 +136,7 @@ typedef struct {typeName} {{
     this$->capturedArgs = malloc(sizeof(void*) * {captured.Length});
     {ctorCapturing}
     this$->fp = fp;
+    return this$;
 }}
 void {typeName}_Destructor(void* data) {{
     {typeName}* this$ = ({typeName}*)data;
