@@ -15,7 +15,7 @@ type Language =
     | Php
     | Dart
     | Rust
-    | Plugin
+    | Plugin of name: string
 
     override this.ToString() =
         match this with
@@ -25,7 +25,7 @@ type Language =
         | Php -> "PHP"
         | Dart -> "Dart"
         | Rust -> "Rust"
-        | Plugin -> "Plugin"
+        | Plugin name -> name
 
 type CompilerOptions =
     {

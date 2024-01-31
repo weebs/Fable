@@ -552,7 +552,7 @@ let getStatus =
     | Python -> "beta"
     | Rust -> "alpha"
     | Dart -> "beta"
-    | Plugin
+    | Plugin _
     | Php -> "experimental"
 
 let getLibPkgVersion =
@@ -562,7 +562,7 @@ let getLibPkgVersion =
     | Python
     | Rust
     | Dart
-    | Plugin
+    | Plugin _
     | Php -> None
 
 [<EntryPoint>]

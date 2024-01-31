@@ -14,7 +14,7 @@ module Compiler =
             {
                 TypedArrays = true
                 ClampByteArrays = false
-                Language = Language.Plugin
+                Language = Language.Plugin "C"
                 Define = []
                 DebugMode = true
                 OptimizeFSharpAst = false // todo: TRUE

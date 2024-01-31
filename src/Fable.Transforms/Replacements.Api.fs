@@ -74,7 +74,7 @@ let tryCall (com: ICompiler) ctx r t info thisArg args =
     | Rust -> Rust.Replacements.tryCall com ctx r t info thisArg args
     | Python -> Py.Replacements.tryCall com ctx r t info thisArg args
     | Dart -> Dart.Replacements.tryCall com ctx r t info thisArg args
-    | Plugin ->
+    | Plugin "C" ->
         let ptrModule = "Microsoft.FSharp.NativeInterop.NativePtrModule"
         match info.CompiledName, info.DeclaringEntityFullName with
         | ".ctor", "System.Collections.Generic.Dictionary`2" -> None

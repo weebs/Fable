@@ -873,7 +873,8 @@ let getFableLibraryPath (opts: CrackerOptions) =
         | Python, None -> "fable-library-py/fable_library", "fable_library"
         | Python, Some Py.Naming.sitePackages ->
             "fable-library-py", "fable-library"
-        | Plugin, None -> "", ""
+        | Plugin "C", None -> "", ""
+        | Plugin name, None -> "fable-library-" + name, "fable-library-" + name
         | _, Some path ->
             if path.StartsWith("./", StringComparison.Ordinal) then
                 "", Path.normalizeFullPath path

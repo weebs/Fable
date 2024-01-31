@@ -1031,7 +1031,7 @@ module Helpers =
         | TypeScript -> memb.IsMutable && isNotPrivate memb
         | Rust -> true // always
         | Php
-        | Plugin
+        | Plugin _
         | Dart -> false
 
     let isModuleValueForCalls
@@ -2933,7 +2933,7 @@ module Util =
                 | Some e -> Some e
                 | None when info.IsInterface ->
                     callAttachedMember com r typ callInfo ent memb |> Some
-                | None when com.Options.Language = Plugin ->
+                | None when com.Options.Language = Plugin "C" ->
                     let ident = Fable.IdentExpr {
                         Name = memb.FullName
                         Type = Fable.Unit // todo: create right type
