@@ -373,8 +373,11 @@ let gatherAnonymousFunctions2 existingIdents (expr: Expr) =
                 |> Seq.map (fun kv -> let ident = kv.Value in ident)
                 |> Seq.toList
             acc <- ((captured @ args), e, body) :: acc
-            let more = gatherAnonymousFunctions2 previousIdents body
-            acc <- more @ acc
+            match body with
+            | CurriedApply _ -> ()
+            | _ ->
+                let more = gatherAnonymousFunctions2 previousIdents body
+                acc <- more @ acc
             Some e
         | Lambda(ident, body, stringOption) ->
             let args, body = unwrapLambda ident body
@@ -387,6 +390,14 @@ let gatherAnonymousFunctions2 existingIdents (expr: Expr) =
             acc <- more @ acc
             Some e
         | CurriedApply(applied, exprs, ``type``, sourceLocationOption) ->
+            // Is a LambdaType being applied a special case?
+            // Where do we determine how to translate this?
+            match applied with
+            | Lambda (arg, expr, name) ->
+                // todo: we can tell here its a partial application
+                ()
+            | _else ->
+                ()
             let argTypes, returnType = unwrapLambdaType applied.Type
             if exprs.Length = argTypes.Length then None
             else

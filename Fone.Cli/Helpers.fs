@@ -1121,6 +1121,7 @@ type Print =
     static member compiledFunctionSignature (functionInfo: C.FunctionInfo) : string =
         Print.compiledFunctionSignature (functionInfo.id, functionInfo.args, functionInfo.return_type)
     static member closureTypeName (transformType: _ -> C.Type, capturedArgs: Type list, args: Type list, _return: Type) =
+        // todo: Managed to get overlap between closure type names
         let captured = capturedArgs |> List.map (transformType) |> List.map _.ToNameString() |> String.concat "_"
         let args = args |> List.map (transformType) |> List.map _.ToNameString() |> String.concat "_"
         let _return = _return |> transformType |> _.ToNameString()

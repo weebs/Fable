@@ -90,8 +90,15 @@ let tryCall (com: ICompiler) ctx r t info thisArg args =
         | "OfNativeIntInlined", _mod when _mod = ptrModule ->
             Helper.LibCall(com, ptrModule, "OfNativeIntInlined", t, args, ?loc=r)
             |> Some
+        | ".ctor", entityName when entityName.StartsWith "Microsoft.FSharp.Core.PrintfFormat" ->
+            let replaced = JS.Replacements.tryCall com ctx r t info thisArg args
+            replaced
+        | "PrintFormatLine", "Microsoft.FSharp.Core.ExtraTopLevelOperators" ->
+            let replaced = JS.Replacements.tryCall com ctx r t info thisArg args
+            replaced
         | _ ->
-            JS.Replacements.tryCall com ctx r t info thisArg args
+            let replaced = JS.Replacements.tryCall com ctx r t info thisArg args
+            replaced
     | _ -> JS.Replacements.tryCall com ctx r t info thisArg args
 
 let error (com: ICompiler) msg =
@@ -115,7 +122,7 @@ let createMutablePublicValue (com: ICompiler) value =
     | TypeScript -> JS.Replacements.createAtom com value
     | Rust
     | Php
-    | Plugin
+    | Plugin _
     | Dart -> value
 
 let getRefCell (com: ICompiler) r typ (expr: Expr) =

@@ -605,6 +605,7 @@ let partialApplyAtRuntime
     | JavaScript
     | TypeScript
     | Dart
+    // | Plugin
     | Python ->
         match uncurryLambdaType -1 [] expr.Type with
         | ([] | [ _ ]), _ -> expr
@@ -675,6 +676,7 @@ let uncurryExprAtRuntime (com: Compiler) arity (expr: Expr) =
         | JavaScript
         | TypeScript
         | Dart
+        // | Plugin
         | Python ->
             let uncurriedType = DelegateType(argTypes, returnType)
 

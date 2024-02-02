@@ -1225,9 +1225,75 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
     //        C.Ident ident
             transformExpr ctx generics body
             //C.BlockExpr (transformMember ctx generics expr)
+        | CurriedApply (Lambda (arg, lambdaExpr, name), args, _type, range) ->
+            let rec loop exprToApply (lambdaIdents: string list) (args: Expr list) : C.Expr =
+                match exprToApply with
+                | Lambda (arg, lambdaExpr, name) ->
+                    let lambdaIdents = lambdaIdents @ [ arg.Name ]
+                    let rec f e =
+                        match e with
+                        | IdentExpr i when lambdaIdents |> List.contains i.Name ->
+                            args[List.findIndex (fun a -> a = i.Name) lambdaIdents]
+                        | e ->
+                            Fable.Transforms.AST.visit f e
+                    let result =
+                        match lambdaExpr with
+                        | Lambda _ ->
+                            loop lambdaExpr lambdaIdents args
+                        | _ ->
+                            let replacedExpr = Fable.Transforms.AST.visit f lambdaExpr
+                            transformExpr ctx generics replacedExpr
+
+                    let t = transformType generics lambdaExpr.Type
+                    match t with
+                    | C.Ptr (C.UserDefined (name, _, _)) ->
+                        C.Call ($"{name}_Invoke", [
+                            result
+                            List.last args |> transformExpr ctx generics
+                        ])
+                | Call(callee, callInfo, ``type``, sourceLocationOption) ->
+                    match exprToApply.Type with
+                    | LambdaType _ ->
+                        let t = transformType generics exprToApply.Type
+                        let result = transformExpr ctx generics exprToApply
+                        match t with
+                        | C.Ptr (C.UserDefined (name, _, _)) ->
+                            C.Call ($"{name}_Invoke", [
+                                result
+                                yield! List.tail args |> List.map (transformExpr ctx generics)
+                            ])
+                    | _ ->
+                        Print.emitComment expr
+                | _else ->
+                    transformExpr ctx generics _else
+            // loop (Lambda (arg, lambdaExpr, name)) [] args
+            loop lambdaExpr [ arg.Name ] args
+            // let appliedArgTypes, appliedReturnType = unwrapLambdaType (Lambda (arg, lambdaExpr, name)).Type
+            // // todo: Lookup the function being applied
+            // // todo: Recursively call Func__T_Invoke appropriately for function type
+            // // todo: Add required func types to state
+            // let items = ctx.file.Declarations
+            // let t = transformType generics lambdaExpr.Type
+            // let rec f e =
+            //     match e with
+            //     | IdentExpr i when i.Name = arg.Name -> args[0]
+            //     | e -> Fable.Transforms.AST.visit f e
+            // let replacedExpr = Fable.Transforms.AST.visit f lambdaExpr
+            // let toCall = transformExpr ctx generics replacedExpr
+            // match t with
+            // | C.Ptr (C.UserDefined (name, _, _)) ->
+            //     C.Call ($"{name}_Invoke", [
+            //         toCall
+            //         yield! List.tail args |> List.map (transformExpr ctx generics)
+            //     ])
+            // | _ ->
+            //     Print.emitComment expr
         | CurriedApply(applied, exprs, ``type``, sourceLocationOption) ->
             let appliedArgTypes, appliedReturnType = unwrapLambdaType applied.Type
             if appliedArgTypes.Length = exprs.Length then
+                // todo: Check if the function we're calling returns a function
+                // todo: If it does, then we need to invoke it correctly instead
+                // of passing args like a normal C function call
                 let invokeArgs = transformExpr ctx generics applied :: (exprs |> List.map (transformExpr ctx generics))
                 let typeName = Print.funcTypeName (transformType generics, appliedArgTypes, appliedReturnType)
                 C.Call ($"{typeName}_Invoke", invokeArgs)
@@ -1323,6 +1389,11 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
             if not (Query.isClosure ctx.idents body) then
             // todo: if Query.isEmptyDelegate args body then
                 C.Expr.Emit name
+                let value = transformDelegate ctx generics expr args body
+                let args, returnType = (args |> List.map _.Type), body.Type
+                let typeName = Print.funcTypeName (transformType generics, args, returnType)
+                let name = getAnonymousFunctionName ctx ctx.currentFile body
+                C.Call ($"{typeName}_ctor", [ C.Value (C.ValueKind.Int 0); value; C.Expr.Emit "(void*)0"; C.Expr.Emit "(void*)0" ])
             else
                 let idents =
                     Query.identsCaptured ctx.idents body
@@ -1453,7 +1524,10 @@ let transformDelegate (ctx: Context) (generics: (string * Type) list) (expr: Exp
         if Query.isEmptyDelegate idents body then
             transformExpr ctx generics applied
         else
-            Print.emitComment expr
+            // todo: we can tell here that the applied call calls a function that returns a function itself rather
+            // todo: a fullied applied fn
+            let info = Print.emitComment expr
+            C.Expr.Emit (getAnonymousFunctionName ctx ctx.currentFile expr)
     | _ ->
         for i in 1..10 do
             printfn "Checking lambda in transformDelegate (third case)"

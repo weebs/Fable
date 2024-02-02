@@ -12,7 +12,7 @@ module Compiler =
     let options: Fable.CompilerOptions = {
         TypedArrays = true
         ClampByteArrays = false
-        Language = Language.Plugin
+        Language = Language.Plugin "C"
         Define = []
         DebugMode = true
         OptimizeFSharpAst = false // todo: TRUE
@@ -107,6 +107,8 @@ module Compiler =
                     com = com
                     currentFile = "Program.fs"; idents = []
                     db = Fable.C.Helpers.database.contents
+                    // todo:
+                    file = Unchecked.defaultof<_>
                 }
                 "/build/project.json"
         let files = io.files
@@ -123,8 +125,8 @@ module Compiler =
 [<EntryPoint>]
 let main argv =
     let testsProjFile =
-        Path.Join(__SOURCE_DIRECTORY__, "../tests/C/Fable.Tests.C/Fable.Tests.C.fsproj")
-        // Path.Join(__SOURCE_DIRECTORY__, "../src/quicktest/Quicktest.fsproj")
+        // Path.Join(__SOURCE_DIRECTORY__, "../tests/C/Fable.Tests.C/Fable.Tests.C.fsproj")
+        Path.Join(__SOURCE_DIRECTORY__, "../src/quicktest/Quicktest.fsproj")
         // "C:/Users/Dave/projects/Fable/src/quicktest/Quicktest.fsproj"
     // File.WriteAllText("/Quicktest.fsproj", projText)
     // let quicktest = Path.Join(__SOURCE_DIRECTORY__, "../tests/Fable.Tests.C/Fable.Tests.C.fsproj")

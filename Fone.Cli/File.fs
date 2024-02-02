@@ -154,6 +154,7 @@ let transformFile (_com: Fable.Compiler) (file: File) =
     compiler.UpdateFile(_com.CurrentFile, FileCompilationResults.Empty, ())
     let context = {
         com = _com
+        file = file
         currentFile = _com.CurrentFile
         idents = []
         db = database.contents

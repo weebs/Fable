@@ -1,189 +1,49 @@
-module QuickTest
+// let anotherEffect =
+//     fun () ->
+//         printfn "set up"
+//         fun () ->
+//             printfn "clean up"
 
-// Run `dotnet fsi build.fsx quicktest` and then add tests to this file,
-// when you save they will be run automatically with latest changes in compiler.
-// When everything works, move the tests to the appropriate file in tests/Main.
-// Please don't add this file to your commits.
+// let myEffect2 () () =
+    // printfn "myEffect2"
 
-open System
-open System.Collections.Generic
-open Fable.Core
-open Fable.Core.JsInterop
-open Fable.Core.Testing
-open QuickTest.Generics
+let myEffect (b: bool) (i: int) =
+    printfn "Effect!"
+    fun (s: string) -> printfn "Cleaning up"
 
-// let log (o: obj) = JS.console.log (o)
-// // printfn "%A" o
+// let returnsEffect () =
+//     myEffect
 //
-// let equal expected actual =
-//     let areEqual = expected = actual
-//     printfn "%A = %A > %b" expected actual areEqual
+// let rec returnsReturnEffect () =
+//     returnsEffect
 //
-//     if not areEqual then
-//         failwithf "[ASSERT ERROR] Expected %A but got %A" expected actual
-//
-// let throwsError (expected: string) (f: unit -> 'a) : unit =
-//     let success =
-//         try
-//             f () |> ignore
-//             true
-//         with e ->
-//             if not <| String.IsNullOrEmpty(expected) then
-//                 equal e.Message expected
-//
-//             false
-//     // TODO better error messages
-//     equal false success
-//
-// let testCase (msg: string) f : unit =
-//     try
-//         printfn "%s" msg
-//         f ()
-//     with ex ->
-//         printfn "%s" ex.Message
-//
-//         if
-//             ex.Message <> null
-//             && ex.Message.StartsWith("[ASSERT ERROR]", StringComparison.Ordinal)
-//                |> not
-//         then
-//             printfn "%s" (ex.StackTrace ??= "")
-//
-//     printfn ""
-//
-// let testCaseAsync msg f =
-//     testCase
-//         msg
-//         (fun () ->
-//             async {
-//                 try
-//                     do! f ()
-//                 with ex ->
-//                     printfn "%s" ex.Message
-//
-//                     if
-//                         ex.Message <> null
-//                         && ex.Message.StartsWith(
-//                             "[ASSERT ERROR]",
-//                             StringComparison.Ordinal
-//                            )
-//                            |> not
-//                     then
-//                         printfn "%s" (ex.StackTrace ??= "")
-//             }
-//             |> Async.StartImmediate
-//         )
-//
-// let throwsAnyError (f: unit -> 'a) : unit =
-//     let success =
-//         try
-//             f () |> ignore
-//             true
-//         with e ->
-//             printfn "Got expected error: %s" e.Message
-//             false
-//
-//     if success then
-//         printfn "[ERROR EXPECTED]"
-//
-// let measureTime (f: unit -> unit) : unit =
-//     emitJsStatement
-//         ()
-//         """
-//    //js
-//    const startTime = process.hrtime();
-//    f();
-//    const elapsed = process.hrtime(startTime);
-//    console.log("Ms:", elapsed[0] * 1e3 + elapsed[1] / 1e6);
-//    //!js
-// """
+// let useEffect3 (effect: unit -> unit -> (unit -> unit -> unit)): unit =
+//     let fn = effect () () ()
+//     fn ()
+// let useEffect2 (effect: unit -> (unit -> unit -> unit)): unit =
+//     let fn = effect () ()
+//     let fn2 = effect ()
+//     let fn1 = fn2 ()
+//     fn ()
+//     fn2 () ()
+//     fn1 ()
+let useEffect (effect: bool -> int -> (string -> unit)): unit =
+    // Invoke
+    effect true 420 ""
+    // Apply
+    let fn = effect true 1234
+    printfn "callback"
+    let s = ""
+    printfn $"The effect is {fn} {fn s}"
 
-type Count() =
-    let mutable count = 0
-    do printfn $"count = {count}"
+    fn "hi"
 
-    member this.Count =
-        printfn "yo"
-        count
-
-    member this.Increment() = count <- count + 1
-// let incrementCount (counter: Count) =
-//     counter.Increment()
-// let incrementCount2 (counter: Count) =
-//     let count = counter
-//     count.Increment()
-let mutable n = 0
-
-let returnsCounter () =
-    let counter = Count()
-
-    let toReturn =
-        if n = 420 then
-            let returns =
-                if n = 400 then
-                    let b = counter
-                    printfn "yo"
-                    b
-                else
-                    Count()
-
-            if n = 10 then
-                returns
-            else
-                Count()
-        else
-            let a = Count()
-            a
-
-    toReturn
-
-let returnsCounter2 () = Count()
-
-let returnsCount () =
-    let count = Count()
-    count.Increment()
-    count.Count
-
-let array () =
-    let items =
-        [|
-            1
-            2
-            3
-            4
-        |]
-
-    let moreItems = [| Count(); Count() |]
-
-    printfn $"items = {items}"
-    // let otherItems = Array.create 10 ""
-    let otherItems =
-        [|
-            ""
-            ""
-        |]
-
-    otherItems
-
-let genericsTest () =
-    let vec = Vec<int>()
-
-    for i in 1..5 do
-        vec.Add i
-// let tests () =
-//     printfn "Running quick tests..."
-//     let count = Count()
-//     for i in 1..10 do
-//         let counter = Count()
-//         counter.Increment()
-//         // todo: Auto-release is needed for this to work
-//         incrementCount (Count())
-//         incrementCount (returnsCounter ())
-//         // count.Increment()
-//         printfn $"{i} {i}"
-//     printfn $"{count.Count}"
-
-// Write here your unit test, you can later move it
-// to Fable.Tests project. For example:
-// testCase "Addition works" <| fun () ->
-//     2 + 2 |> equal 4
+let effects () =
+    // let fn = myEffect ()
+    // fn ()
+    useEffect myEffect
+    // useEffect3 returnsReturnEffect
+    // useEffect2 returnsEffect
+    // useEffect2 (fun foo -> fun () -> fun () -> ())
+    // useEffect (fun foo -> returnsEffect foo ())
+    // useEffect myEffect2

@@ -6,11 +6,12 @@
     <LangVersion>Preview</LangVersion>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="Generics.fs" />
+<!--    <Compile Include="Generics.fs" />-->
     <Compile Include="QuickTest.fs" />
     <Content Include="quicktest.fs.js" />
     <Content Include="*.fs.h" />
     <Content Include="*.fs.c" />
+      <Content Include="*.fs.rs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Fable.Core/Fable.Core.fsproj" />
