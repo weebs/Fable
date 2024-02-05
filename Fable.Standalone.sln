@@ -21,7 +21,7 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "fcs-fable", "src\fcs-fable\
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Rust.AST", "src\Fable.Transforms\Rust\AST\Rust.AST.fsproj", "{478E467C-A74E-4A0A-BC82-02BB331F1E33}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fable.Tests.C", "tests\Fable.Tests.C\Fable.Tests.C.fsproj", "{FC48F5DA-3889-44EB-851B-909C6D395ECB}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fable.Tests.C", "tests\C\Fable.Tests.C\Fable.Tests.C.fsproj", "{FC48F5DA-3889-44EB-851B-909C6D395ECB}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fone.Cli", "Fone.Cli\Fone.Cli.fsproj", "{2509BCE0-9AC7-457C-85FF-8B08B85E94B1}"
 EndProject

@@ -422,12 +422,13 @@ let parseFiles projectFileName options : _ Async =
                 // let generics = io.files |> Seq.find (fun filename -> filename.Key.Contains ".generics.")
                 let output = compiledFiles |> List.rev |> List.map snd |> List.map _.Result |> String.concat "\n"
                 let header =
-                    Fable.C.Writer.writeModuleHeaderFile
-                        Fable.C.File.runtime
+                    Fable.C.ProjectWriter.writeModuleHeaderFile
                         {
                             Fable.C.C99Compiler.Context.currentFile = "Program.fs"
                             Fable.C.C99Compiler.Context.idents = []
+                            com = Unchecked.defaultof<_>
                             db = Fable.C.Helpers.database.contents
+                            file = Unchecked.defaultof<_>
                         }
                         "/build/project.json"
                 let compiledOutput =
