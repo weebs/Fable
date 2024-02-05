@@ -1247,8 +1247,13 @@ type Print =
                 // | Some ident -> ident
                 | _ -> arg)
             |> fun items ->
-                if m.Args.Length > 0 then
-                    items |> List.filter (fun arg -> match arg.Type with | Unit -> false | _ -> true)
+                if m.Args.Length > 1 then
+                    items
+                    |> List.filter (fun arg ->
+                        match arg.Type with
+                        | Unit -> false
+                        | _ -> true
+                    )
                 else
                     items
             |> List.map (fun a -> (a.Name, transformType generics a.Type))
