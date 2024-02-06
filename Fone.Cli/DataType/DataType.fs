@@ -68,6 +68,9 @@ let writeStruct (generics: (string * Type) list) (ent: Entity) (ctor: MemberDecl
                         // _sb.AppendLine $"{struct_name}* {struct_name}_ctor();" |> ignore
                         ()
                 _sb.AppendLine $"void {struct_name}_Destructor({struct_name}* this$);" |> ignore
+        if Helpers.Query.hasFinalizer ent then
+            _sb.AppendLine $"void* {struct_name}_Finalize({struct_name}* this$);"
+            |> ignore
         _sb.ToString()
 
 let writeUnionToBuilder (genArgs: Type list) (sb: CompiledOutputBuilder) (ent: Entity) =

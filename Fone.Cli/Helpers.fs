@@ -217,6 +217,12 @@ let tryResolveType (generics: (string * Type) list) (t: Type) : Type option =
         generics |> List.tryFind (fun (paramName, _) -> name = paramName) |> Option.map snd
     | _ -> Some t
 module Query =
+    let hasFinalizer (ent: Entity) =
+        ent.MembersFunctionsAndValues |> Seq.exists (fun m ->
+            m.CompiledName = "Finalize" &&
+            m.IsOverrideOrExplicitInterfaceImplementation &&
+            m.CurriedParameterGroups = [ [] ]
+        )
     let exprIsDefaultOf (expr: Expr) =
         match expr with
         | Call (Import(importInfo, ``type``, sourceLocationOption), callInfo, _, _) ->

@@ -75,6 +75,9 @@ let buildFinalizer generics genericParams (ent: Entity) =
         C.FunctionInfo.id = finalizer_id
         C.FunctionInfo.return_type = C.Void
         C.FunctionInfo.body = [
+            if Query.hasFinalizer ent then
+                C.Statement.Expression <|
+                    C.Call ($"{name}_Finalize", [ C.Expr.Emit "this$" ])
             if ent.MembersFunctionsAndValues |> Seq.exists (fun m -> m.CompiledName.EndsWith "_Free") then
                 C.Emit $"{name}__Free(this$);"
             // todo: instead of calling free, reach out ot the runtime so it can call any finalizers
