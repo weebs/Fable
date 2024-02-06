@@ -66,10 +66,13 @@ function escapeJsStringLiteral(str) {
   return JSON.stringify(str).slice(1, -1).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 }
 let fs: Map<string, Uint8Array | string> = new Map();
-(async () => {
+export const initFs = (async () => {
     console.log('grabbing files')
-    fs = new Map(await Promise.all(assemblies.map(a => fetchBlob(url => 'fable-metadata/lib/' + url, a))))
-})();
+    const files = await Promise.all(assemblies.map(a => fetchBlob(url => 'fable-metadata/lib/' + url, a)));
+    for (const [name, value] of files) {
+        fs.set(name, value);
+    }
+});
 let callbacks = []
 let fileWatchers = new Map()
 let JS_fs = {
@@ -96,7 +99,7 @@ let JS_fs = {
 //         p = path.substring(prefix.length);
 //     }
     readFileSync: (_name, type?): Uint8Array | string | undefined => {
-        const prefix = '/home/dave/repos/fable2/src/fable-standalone/test/bench-compiler/../../../'
+        const prefix = '/home/dave/projects/fable_github_demo/Fable/src/fable-standalone/test/bench-compiler/../../../'
         let name = _name;
         if (name.startsWith(prefix)) {
             name = name.substring(prefix.length);
