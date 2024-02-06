@@ -313,9 +313,9 @@ let transformFile (_com: Fable.Compiler) (file: File) =
                     for fn in toCompile do
                         compiledModule += fn
         | ClassDeclaration classDecl ->
-            let isGeneric = classDecl.Name.Contains "$"
             match context.db.TryGetEntity(classDecl.Entity) with
             | Some ent ->
+                let isGeneric = ent.GenericParameters.Length > 0
                 compiler.AddEntity(ent)
                 if not isGeneric then
                     // Todo we ask for this twice
