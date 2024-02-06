@@ -110,6 +110,8 @@ module rec C =
                 match t with
                 | Char ->
                     "%s"
+                | UserDefined ("System_String", _, _) ->
+                    "%s"
                 | _ ->
                     "%p"
             | _ -> "%p"

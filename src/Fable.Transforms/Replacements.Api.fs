@@ -106,6 +106,31 @@ let tryCall (com: ICompiler) ctx r t info thisArg args =
         | "PrintFormatLine", "Microsoft.FSharp.Core.ExtraTopLevelOperators" ->
             let replaced = JS.Replacements.tryCall com ctx r t info thisArg args
             replaced
+        | "Substring", "System.String" ->
+            let ident = Fable.IdentExpr {
+                Name = "Fable." + info.DeclaringEntityFullName + "." + info.CompiledName
+                Type = Fable.Unit // todo: create right type
+                IsMutable = false
+                IsThisArgument = false
+                IsCompilerGenerated = false
+                Range = None
+            }
+            let entRef = { FullName = "Fable.System.String"; Path = CoreAssemblyName "TODO: mscorlib" }
+            let memberRefInfo = { IsInstance = true; CompiledName = "Substring"; NonCurriedArgTypes = Some info.SignatureArgTypes; Attributes = Seq.empty }
+            let callInfo: Fable.CallInfo = {
+                ThisArg = thisArg
+                Args = args
+                SignatureArgTypes = info.SignatureArgTypes
+                GenericArgs = info.GenericArgs
+                MemberRef = Some (MemberRef (entRef, memberRefInfo))
+                Tags = []
+            }
+            let call = Some (Fable.Call (ident, callInfo, t, r))
+            call
+            None
+            // call
+            // Helper.LibCall(com, "Fable." + info.DeclaringEntityFullName, info.CompiledName, t, args, ?loc=r)
+            // |> Some
         | _ ->
             let replaced = JS.Replacements.tryCall com ctx r t info thisArg args
             replaced

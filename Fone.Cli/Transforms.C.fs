@@ -180,7 +180,8 @@ let rec transformType (generics: (string * Type) list) (t: Fable.Type) =
             C.EmitType $"/* %A{t} */"
         | Fable.Type.String ->
 //            C.UserDefined ("System_Array__char", false, None)
-            C.Ptr C.Char
+            C.Ptr (C.UserDefined ("System_String", false, None))
+            // C.Ptr C.Char
 //            C.UserDefined ("System_Array__char", false, None)
         | Fable.Type.Array(genericArg, arrayKind) ->
             // C.Ptr (C.UserDefined ($"System_GcArray__{(loop (depth + 1) generics genericArg).ToNameString()}", false, None))
@@ -325,8 +326,14 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
         // | _ ->
         //     C.ValueKind.Compound
     | Fable.StringConstant value ->
-        let corrected = value.Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\t", "\\t").Replace("\r", "\\r")
-        C.ValueKind.CStr corrected
+        let corrected =
+            value
+                .Replace("\"", "\\\"")
+                .Replace("\n", "\\n")
+                .Replace("\t", "\\t")
+                .Replace("\r", "\\r")
+        // C.ValueKind.CStr corrected
+        C.ValueKind.Emit $"System_String_ctor(\"{corrected}\")"
     | Fable.CharConstant c ->
         C.ValueKind.Char c
     | Fable.UnitConstant -> // todo: this leaves blank ; around the file that makes me think soemthing is wrong D:
@@ -1591,6 +1598,7 @@ let rec requiresTracking generics t =
             match entityRef.FullName with
             | "nativeptr`1" -> false
             | _ -> true
+    | String -> true
     | Array _ -> true
     | List _ -> true
     | Any -> true
@@ -1604,7 +1612,6 @@ let rec requiresTracking generics t =
             requiresTracking generics (resolveType generics t)
     | AnonymousRecordType(fieldNames, genericArgs, isStruct) -> not isStruct || (List.exists (requiresTracking generics) genericArgs)
     | Boolean -> false
-    | String -> false
     | Char -> false
     | LambdaType _ -> true
     | DelegateType _ -> true

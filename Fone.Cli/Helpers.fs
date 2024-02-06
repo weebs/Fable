@@ -1137,9 +1137,11 @@ type Print =
         let _return = _return |> transformType |> _.ToNameString()
         $"Func__{args}__{_return}"
     static member compiledTypeName (_type: EntityRef) =
-        _type.FullName.Replace(".", "_").Replace("Tmds_Linux_s", "")
+        Print.compiledTypeName ([], _type.FullName)
+        // _type.FullName.Replace(".", "_").Replace("Tmds_Linux_s", "")
     static member compiledTypeName (_type: MemberFunctionOrValue) =
-        _type.FullName.Replace(".", "_").Replace("Tmds_Linux_s", "")
+        Print.compiledTypeName ([], _type.FullName)
+        // _type.FullName.Replace(".", "_").Replace("Tmds_Linux_s", "")
     static member unionCaseName (transformType: _ -> C.Type, genArgs, case: UnionCase) =
         let str = genArgs |> List.map (transformType >> _.ToNameString()) |> String.concat "_"
         case.FullName
@@ -1163,6 +1165,7 @@ type Print =
         // .Replace("Tmds_Linux", "")
         // if className.StartsWith "Fable_" then className.Substring("Fable_".Length) else className
         match fullName with
+        | "Fable.System.String"
         | "Fable.System.Collections.Generic.Dictionary`1"
         | "Fable.System.Collections.Generic.List`1" ->
             className.Substring("Fable_".Length)

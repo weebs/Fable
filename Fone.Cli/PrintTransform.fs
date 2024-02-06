@@ -87,6 +87,15 @@ let toConsole (context: C99Compiler.Context) (com: Type.ICompiler) transformType
                     s <- s + parts.[i]
                 let newValues = values |> List.collect (fun v ->
                     match v with
+                    | Ok v when v.Type = String ->
+                        let fieldInfo = {
+                            Name = "data"
+                            FieldType = Some String
+                            IsMutable = false
+                            MaybeCalculated = true
+                            Tags = []
+                        }
+                        [ Fable.Get (v, GetKind.FieldGet fieldInfo, v.Type, v.Range) ]
                     | Ok v -> [ v ]
                     | Error (v, fields) ->
                         fields |> List.map (fun f ->
@@ -96,10 +105,22 @@ let toConsole (context: C99Compiler.Context) (com: Type.ICompiler) transformType
                 )
                 let s = s.Replace("\n", "\\n")
                 C.Value (C.CStr <| s + "\\n") :: (newValues |> List.map (transformExpr context generics))
+            | StringConstant s ->
+                [ C.DerefMemberAccess (
+                    C.Value <| transformValueKind context generics valueKind,
+                    "data") ]
             | _ ->
                 [ C.Value <| transformValueKind context generics valueKind ]
         | Call(Import(importInfo, _type, _), callInfo, callType, _) when importInfo.Selector = "printf" ->
-            let args = callInfo.Args |> List.map (transformExpr context generics)
+            let transformArg arg =
+                match arg with
+                | Fable.Value (StringConstant c, r) ->
+                    C.Value (C.CStr c)
+                    // C.DerefMemberAccess (
+                    //     C.Value <| transformValueKind context generics (StringConstant c),
+                    //     "data")
+                | _ -> transformExpr context generics arg
+            let args = callInfo.Args |> List.map transformArg // (transformExpr context generics)
             match args[0] with
             | C.Value (C.CStr s) ->
                 let s = s.Replace("\n", "\\n")

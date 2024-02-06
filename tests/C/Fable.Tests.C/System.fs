@@ -1,4 +1,8 @@
 ﻿module Fable
+
+open System.Runtime.InteropServices
+
+
 type Ref<'t>(initValue: 't) =
     let mutable value = initValue
     member this.Value = value
@@ -13,6 +17,28 @@ module Hash =
             hash <- (M * hash) + int value
         if hash < 0 then -1 * hash else hash
 module System =
+    type String(chars: nativeptr<char>) =
+        let length =
+            let mutable count = 0
+            while NativeInterop.NativePtr.get chars count <> '\000' do
+                count <- count + 1
+            count
+        let data: nativeptr<char> =
+            Marshal.AllocHGlobal (length + 1)
+            |> NativeInterop.NativePtr.ofNativeInt
+        do
+            for i in 0..length - 1 do
+                NativeInterop.NativePtr.set data i (NativeInterop.NativePtr.get chars i)
+            NativeInterop.NativePtr.set data length '\000'
+        member this.Substring (startIndex: int) =
+            String(NativeInterop.NativePtr.add data startIndex)
+        override this.Finalize() =
+            Marshal.FreeHGlobal (NativeInterop.NativePtr.toNativeInt data)
+    // module Runtime =
+    //     module InteropServices =
+    //         module Marshal =
+    //             let FreeHGlobal (ptr: nativeint) =
+    //                 ()
     module Collections =
         module Generic =
             type List<'t>() =
