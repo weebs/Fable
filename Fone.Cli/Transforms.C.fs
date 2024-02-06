@@ -1628,7 +1628,8 @@ let replaceMutableValueCapturedIdent ctx (ident: Ident) (body: Expr) =
             //     i.Type,
             //     [ e ]
             // )
-            let (Some (ent, file, m, _m)) = ctx.db.TryGetMember ("Fable.Ref`1", "Ref$1__get_Value")
+            let (Some (ent, file, m, _m)) =
+                ctx.db.TryGetMemberWithName ("Fable.Ref`1", "Ref$1__get_Value")
             let info: CallInfo = {
                ThisArg = None
                Args = [ e ]

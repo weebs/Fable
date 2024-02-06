@@ -3,7 +3,7 @@ module Fable.C.AST
 module Type =
     open Fable.AST.Fable
     type ICompiler =
-        abstract member TryGetMember: string * string -> (Entity * File * MemberDecl * MemberFunctionOrValue) option
+        abstract member TryGetMemberWithName: string * string -> (Entity * File * MemberDecl * MemberFunctionOrValue) option
         abstract member TryGetEntity: EntityRef -> Entity option
         abstract member TryGetEntityWithName: string -> (Entity * File) option
         abstract member TryGetMember: MemberRef -> MemberFunctionOrValue option
