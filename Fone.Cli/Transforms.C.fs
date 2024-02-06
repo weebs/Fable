@@ -1638,7 +1638,7 @@ let replaceMutableValueCapturedIdent ctx (ident: Ident) (body: Expr) =
                 IsCompilerGenerated = false
                 Range = e.Range
             }
-            Call (callee, info, Fable.Unit, e.Range)
+            Call (callee, info, i.Type, e.Range)
         | Set(IdentExpr i, ValueSet, ``type``, value, sourceLocationOption)
                 when i.Name = ident.Name ->
             let callee = IdentExpr {
