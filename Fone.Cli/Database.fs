@@ -190,7 +190,7 @@ type FableCompilationCache() as this =
                 Unchecked.defaultof<_>
         member this.TryGetEntity(ref) =
             entitiesByRef.TryFind ref
-        member this.TryGetEntity name =
+        member this.TryGetEntityWithName name =
             entities |> Map.tryFind name
         member this.TryGetMember (entityName: string, memberName: string) =
            members.TryFind (entityName, memberName)

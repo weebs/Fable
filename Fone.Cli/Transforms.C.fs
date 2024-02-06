@@ -1346,7 +1346,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                     |> Seq.map (fun ident ->
                         if ident.IsMutable && Query.requiresRefCell ctx generics ident.Type then
                             // TODO: Register an instance of Fable.Ref`1 for monomorphic
-                            let ent, _ = ctx.db.TryGetEntity("Fable.Ref`1").Value
+                            let ent, _ = ctx.db.TryGetEntityWithName("Fable.Ref`1").Value
                             closureTypes.Value <- (GenericInteraction.Instantiation (ent.FullName, [ ident.Type ]), IdentExpr ident) :: closureTypes.Value
                             { ident with Type = DeclaredType(ent.Ref, [ ident.Type ]) }
                         else
@@ -1401,7 +1401,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                     |> Seq.map (fun ident ->
                         if ident.IsMutable && Query.requiresRefCell ctx generics ident.Type then
                             // TODO: Register an instance of Fable.Ref`1 for monomorphic
-                            let ent, _ = ctx.db.TryGetEntity("Fable.Ref`1").Value
+                            let ent, _ = ctx.db.TryGetEntityWithName("Fable.Ref`1").Value
                             closureTypes.Value <- (GenericInteraction.Instantiation (ent.FullName, [ ident.Type ]), IdentExpr ident) :: closureTypes.Value
                             { ident with Type = DeclaredType(ent.Ref, [ ident.Type ]) }
                         else
@@ -1649,7 +1649,7 @@ let replaceMutableValueCapturedIdent ctx (ident: Ident) (body: Expr) =
                 IsCompilerGenerated = false
                 Range = sourceLocationOption
             }
-            let (Some (ent, file)) = ctx.db.TryGetEntity "Fable.Ref`1"
+            let (Some (ent, file)) = ctx.db.TryGetEntityWithName "Fable.Ref`1"
             let info: CallInfo = {
                ThisArg = Some <| IdentExpr i
                Args = [ f value ]

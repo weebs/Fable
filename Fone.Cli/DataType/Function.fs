@@ -509,7 +509,7 @@ let gatherAnonymousFunctions (existingIdents: Ident list) (context: Context) (bo
             loop identsToReplace functionExpr
         let idents = idents |> List.map (fun ident ->
             if ident.IsMutable && Query.requiresRefCell context [] ident.Type then
-                match context.db.TryGetEntity "Fable.Ref`1" with
+                match context.db.TryGetEntityWithName "Fable.Ref`1" with
                 | Some (ent, file) ->
                     { ident with Type = DeclaredType (ent.Ref, [ ident.Type ]) }
                 | _else ->

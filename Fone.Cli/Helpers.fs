@@ -1187,7 +1187,7 @@ type Print =
             match m.MemberRef with
             | MemberRef(declaringEntity, memberRefInfo) ->
                 let isStruct =
-                    database.contents.TryGetEntity declaringEntity.FullName
+                    database.contents.TryGetEntityWithName declaringEntity.FullName
                     |> Option.map (fst >> _.IsValueType)
                     |> Option.defaultValue false
                 C.EmitType (Print.compiledTypeName(generics |> List.map (snd >> (transformType generics)), declaringEntity))

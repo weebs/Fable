@@ -5,7 +5,7 @@ module Type =
     type ICompiler =
         abstract member TryGetMember: string * string -> (Entity * File * MemberDecl * MemberFunctionOrValue) option
         abstract member TryGetEntity: EntityRef -> Entity option
-        abstract member TryGetEntity: string -> (Entity * File) option
+        abstract member TryGetEntityWithName: string -> (Entity * File) option
         abstract member TryGetMember: MemberRef -> MemberFunctionOrValue option
         abstract member TryGetMemberByRef: string * string -> (Entity * File * MemberDecl * MemberFunctionOrValue) option
         abstract member GetEntity: EntityRef -> Entity
