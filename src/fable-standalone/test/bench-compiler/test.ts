@@ -87,7 +87,7 @@ window.util = {
     ensureDirExists: (dir) => {}
 }
 let app = null;
-(async () => { 
+window.initFable = (async () => { 
     let projectText = `
     <Project Sdk="Microsoft.NET.Sdk">
 
@@ -103,18 +103,20 @@ let app = null;
 
     </Project>`
     let programText = 'let main () = printfn $"{1337}"'
+    await fs.initFs();
     app = await import('./app.fs.js')
     window.run = app.runMain;
-    setTimeout(async () => {
-        fs.writeFileSync('Program.fsproj', projectText)
-        fs.writeFileSync('Program.fs', programText)
-        let resp = await fetch('bench-compiler/Fable.Tests.C/System.fs');
-        let system_fs = await resp.text()
-        console.log(system_fs)
-        fs.writeFileSync('System.fs', system_fs);
-        console.log(programText)
+    // setTimeout(async () => {
+    fs.writeFileSync('Program.fsproj', projectText)
+    let resp = await fetch('System.fs');
+    let system_fs = await resp.text()
+    console.log(system_fs)
+    fs.writeFileSync('System.fs', system_fs);
+    // fs.writeFileSync('Program.fs', system_fs + '\n' + programText)
+    fs.writeFileSync('Program.fs', system_fs + '\n' + programText)
+    console.log(programText)
         // app.runMain(['Program.fsproj', '--language', 'c'], console.log)
-    }, 2000);
+    // }, 2000);
     window.build = (text, callback) => {
         fs.writeFileSync('Program.fs', text);
         app.runMain(['Program.fsproj', '--language', 'c'], callback)
@@ -123,7 +125,7 @@ let app = null;
     //     console.log(data)
     //     // document.body.innerHTML = '<code style="white-space: pre-wrap;">' + data + '</code>'
     // })
-})();
+});
 // let app = await import('./app.fs.js')
 // console.log(app.JS_fs);
 // console.log(response);

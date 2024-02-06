@@ -6,8 +6,8 @@ type Ref<'t>(initValue: 't) =
 module Hash =
     let hashValue (pointer: nativeint) (length: int) : int =
         let pointer: nativeptr<byte> = NativeInterop.NativePtr.ofNativeInt pointer
-        let mutable hash = 420
-        let M = 69
+        let mutable hash = 13
+        let M = 7
         for i in 0..length - 1 do
             let value = NativeInterop.NativePtr.get pointer i
             hash <- (M * hash) + int value
