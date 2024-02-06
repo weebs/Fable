@@ -65,7 +65,8 @@ let writeStruct (generics: (string * Type) list) (ent: Entity) (ctor: MemberDecl
                         if not ent.IsValueType then
                             _sb.AppendLine $"{struct_name}* {struct_name}_ctor({struct_name} data);" |> ignore
                     else
-                        _sb.AppendLine $"{struct_name}* {struct_name}_ctor();" |> ignore
+                        // _sb.AppendLine $"{struct_name}* {struct_name}_ctor();" |> ignore
+                        ()
                 _sb.AppendLine $"void {struct_name}_Destructor({struct_name}* this$);" |> ignore
         _sb.ToString()
 
@@ -166,3 +167,94 @@ typedef struct {fullName} {{
         {| decl = declarations; code = code |}
     else
         {| decl = ""; code = "" |}
+let writeArray arrayType =
+    let t = (Transforms.transformType [] arrayType)
+    // todo: Arrays of arrays
+    // todo: I think get_Item needs to use Autorelease/increment count
+        // ex: foo[index] is used as param to function f, f calls g, value gets stored into a variable in g, and that variable goes out of scope
+        // ex: foo[index] is used a param to function f and so is foo, then the value is removed from foo in f
+    let typeName = $"System_Array__{t.ToNameString()}"
+    let decl = $"
+typedef struct System_Array__{t.ToNameString()} {{
+    unsigned char __refcount;
+    int length;
+    {t.ToTypeString()}* data;
+}} System_Array__{t.ToNameString()};
+
+{typeName}* {typeName}_ctor(int size, {t.ToTypeString()}* data);
+void {typeName}_Destructor({typeName}* this$);
+
+void {typeName}_set_Item({typeName}* this$, int index, {t.ToTypeString()} value);
+{t.ToTypeString ()} {typeName}_get_Item({typeName}* this$, int index);
+{typeName}* {typeName}_alloc(int size);
+"
+    let ctor = $"""
+{typeName}* {typeName}_ctor(int size, {t.ToTypeString()}* data) {{
+    {typeName}* this$ = malloc(sizeof({typeName}));
+    this$->__refcount = 1;
+    this$->length = size;
+    this$->data = malloc(sizeof({t.ToTypeString()}) * size);
+    for (int i = 0; i < size; i++) {{
+        this$->data[i] = data[i];
+        {if Transforms.requiresTracking [] arrayType then "this$->data[i]->__refcount++;" else ""}
+    }}
+    return ({typeName}*)Runtime_autorelease(this$, {typeName}_Destructor);
+}}
+
+{typeName}* {typeName}_alloc(int size) {{
+    {typeName}* this$ = malloc(sizeof({typeName}));
+    this$->__refcount = 1;
+    this$->length = size;
+    this$->data = calloc(size, sizeof({t.ToTypeString()}));
+    // TODO: initialize values
+    return ({typeName}*)Runtime_autorelease(this$, {typeName}_Destructor);
+}}
+
+void {typeName}_set_Item({typeName}* this$, int index, {t.ToTypeString()} value) {{
+    if (index > this$->length) {{
+        exit(1);
+    }}
+    if (index < 0) {{
+        exit(index);
+    }}
+    {
+        if Transforms.requiresTracking [] arrayType then
+            let name = t.ToNameString()
+            let tName = name.Substring(0, name.Length - 3)
+            let destructor = tName + "_Destructor"
+            $"Runtime_swap_value((void*)(this$->data + index), value, " + destructor + ");"
+        else
+            "this$->data[index] = value;"
+    }
+}}
+
+{t.ToTypeString ()} {typeName}_get_Item({typeName}* this$, int index) {{
+    if (index > this$->length) {{
+        exit(1);
+    }}
+    if (index < 0) {{
+        exit(index);
+    }}
+    return this$->data[index];
+}}
+void {typeName}_Destructor({typeName}* this$) {{
+    {
+        if (Transforms.requiresTracking [] arrayType) then
+            match t with
+            | C.AST.C.Ptr t ->
+                $"
+    for (int i = 0; i < this$->length; i++) {{
+        if (this$->data[i] == NULL) {{ continue; }}
+        Runtime_end_var_scope(this$->data[i], {t.ToNameString ()}_Destructor);
+    }}
+                "
+            | _else ->
+                ""
+        else
+            ""
+    }
+    free(this$->data);
+    free(this$);
+}}
+"""
+    {| name = typeName; decl = decl; code = ctor |}

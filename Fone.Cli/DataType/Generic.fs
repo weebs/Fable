@@ -14,12 +14,105 @@ open Fable.Transforms.FSharp2Fable
 open Fable.C
 open Helpers
 open Transforms
+open Fone.DataType.State
 
 type debug =
     static member inline log ([<ParamArray>] o:  obj[]) = Console.WriteLine $"[DEBUG]: %A{o}"
 
+let writeMethod context (memberFunctionOrValue: MemberFunctionOrValue) fableMethodName genericParams usage (generic_implementations: Generic.List<_>) (added_functions: Generic.List<_>) (generic_interactions: byref<_>) =
+    let declaringEntity = memberFunctionOrValue.DeclaringEntity
+    match declaringEntity with
+    | Some declaringEntity ->
+        let ent: Entity option =
+            compiler.TryGetEntity(declaringEntity.FullName)
+        match ent with
+        | None ->
+            log $"======================= missing entity =============================="
+            #if !FABLE_COMPILER
+            log $"{Print.printObj 0 declaringEntity}"
+            log $"{fableMethodName} - {Print.printObj 0 genericParams}"
+            #endif
+            let paramNames =
+                match snd usage with
+                | Call (_, info, _, _) ->
+                    info.SignatureArgTypes
+                    |> List.map (fun g ->
+                        match g with
+                        | GenericParam (name, _, _) -> Some name | _ -> None)
+                    |> List.filter (Option.isSome)
+                    |> List.map (Option.defaultValue "")
+                | _ ->
+                    log $"======================= todo handle non call generic member decl entity =============================="
+                    []
+            let generics = genericParams |> List.zip paramNames
+            for kv in genericMethodDeclarations.contents do
+                ()
+                // log $"%A{kv.Key} - %A{kv.Value.MemberRef}"
+            // todo: should it be added to the dict with member ref full name?
+            let methodDeclKey = (declaringEntity.FullName, fableMethodName)
+            if genericMethodDeclarations.contents.ContainsKey(methodDeclKey) then
+                let decl = genericMethodDeclarations.contents.[(declaringEntity.FullName, fableMethodName)]
+                let (function_id, type_sig, function_info) = Function.Generics.addMethodImplementation context generics declaringEntity.FullName true genericParams fableMethodName decl
+                generic_implementations.Add(type_sig, Writer.writeFunction (SourceBuilder()) function_info)
+                added_functions.Add(function_id)
+            else
+                log $"Unable to find key for entity ({declaringEntity.FullName}, {fableMethodName})"
+        | Some ent ->
+            //log $"======================= found entity =============================="
+            let entityFullName = ent.FullName //.Split("`").[0]
+            let otherName = $"{ent.DisplayName}_{fableMethodName}"
+            if (genericMethodDeclarations.contents.ContainsKey (entityFullName, fableMethodName) ||
+               genericMethodDeclarations.contents.ContainsKey (entityFullName, otherName)) then
+                let member_declaration =
+                    Map.tryFind (ent.FullName, fableMethodName) genericMethodDeclarations.contents
+                    |> Option.defaultWith (fun () -> genericMethodDeclarations.contents.[(entityFullName,
+                                                                                          otherName)])
+    //                                      pullGenericTypes <|
+    //                                      (ent.GenericParameters) @
+    //                                      (member_declaration.Args |> List.map (fun a -> a.Type)) @
+    //                                      [ member_declaration.Body.Type ]
+                let genericArgNames =
+                    (ent.GenericParameters @ memberFunctionOrValue.GenericParameters)
+                    |> List.map (fun p -> p.Name)
+                    |> List.distinct
+                let generics = (genericParams |> List.zip genericArgNames)
 
-open Fone.DataType.State
+
+                let typeName = Print.compiledTypeName(List.map (transformType generics) genericParams, declaringEntity)
+                //let args = (member_declaration.Args |> List.map (fun i -> i.Name, transformType generics i.Type))
+                let (function_id, type_sig, function_info) = Function.Generics.addMethodImplementation context generics ent.FullName ent.IsValueType genericParams fableMethodName member_declaration
+                // todo: Do closures defined in generic methods work already? Or is this needed
+                // let toCompile = Function.gatherAnonymousFunctions context member_declaration.Body
+                // if toCompile.Length > 0 then
+                //     ()
+                if not (added_functions.Contains(function_id)) then
+                    generic_implementations.Add(type_sig, Writer.writeFunction (SourceBuilder()) function_info)
+                    added_functions.Add(function_id)
+                    let generic_instantiations =
+                        ent.FSharpFields
+                        |> List.collect (fun f -> Query.genericTypesUsedByType generics compiler f.FieldType)
+                    let generic_instantiations =
+                        (generic_instantiations @ (List.collect (Query.genericTypesUsedByType generics compiler) (List.map (_.Type) member_declaration.Args)))
+                        |> List.map (fun i -> i, Unchecked.defaultof<_>)
+                    if generic_instantiations.Length > 0 then
+                        generic_interactions <- generic_instantiations @ generic_interactions
+                    let generic_instantiations = findGenerics database.contents compiler generics member_declaration.Body |> List.collect id
+                    if generic_instantiations.Length > 0 then
+                        generic_interactions <- generic_instantiations @ generic_interactions
+                //let type_sig = Print.compiledTypeSignature (generics, transformType, database.contents, member_declaration)
+                if fableMethodName.Contains "ctor" then
+                    let finalizer_id = $"{typeName}_Destructor"
+                    if not (added_functions.Contains(finalizer_id)) then
+                        added_functions.Add(finalizer_id)
+                        let finalizer_implementation = Function.buildFinalizer generics genericParams ent
+                        generic_implementations.Add(($"void {typeName}_Destructor({typeName} this$);"), (Writer.writeFunction (SourceBuilder()) finalizer_implementation))
+            else
+                // todo WHAT THE FUCK D: <
+                ()
+    | None ->
+        log $"=========================== missing entity for method ===================================="
+        log memberFunctionOrValue.FullName
+
 // todo: We shouldn't pass in a StringBuilder to modify
 let findGenericInteractionsFromNonGenerics (path: string) (projHeaderName: string) =
     // Find the generic interactions
@@ -145,100 +238,12 @@ let generateGenericImplementations context path projHeaderName : string * Generi
             | ValueOption arg ->
                 valueOptions.Add arg
             | Instantiation (fullName, genericParms) when fullName = "System.Array`1" ->
-                let t = (transformType [] genericParms[0])
-                // todo: Arrays of arrays
-                // todo: I think get_Item needs to use Autorelease/increment count
-                    // ex: foo[index] is used as param to function f, f calls g, value gets stored into a variable in g, and that variable goes out of scope
-                    // ex: foo[index] is used a param to function f and so is foo, then the value is removed from foo in f
-                let typeName = $"System_Array__{t.ToNameString()}"
-                let decl = $"
-typedef struct System_Array__{t.ToNameString()} {{
-    unsigned char __refcount;
-    int length;
-    {t.ToTypeString()}* data;
-}} System_Array__{t.ToNameString()};
-
-{typeName}* {typeName}_ctor(int size, {t.ToTypeString()}* data);
-void {typeName}_Destructor({typeName}* this$);
-
-void {typeName}_set_Item({typeName}* this$, int index, {t.ToTypeString()} value);
-{t.ToTypeString ()} {typeName}_get_Item({typeName}* this$, int index);
-{typeName}* {typeName}_alloc(int size);
-"
-                let ctor = $"""
-{typeName}* {typeName}_ctor(int size, {t.ToTypeString()}* data) {{
-    {typeName}* this$ = malloc(sizeof({typeName}));
-    this$->__refcount = 1;
-    this$->length = size;
-    this$->data = malloc(sizeof({t.ToTypeString()}) * size);
-    for (int i = 0; i < size; i++) {{
-        this$->data[i] = data[i];
-        {if requiresTracking [] genericParms[0] then "this$->data[i]->__refcount++;" else ""}
-    }}
-    return ({typeName}*)Runtime_autorelease(this$, {typeName}_Destructor);
-}}
-
-{typeName}* {typeName}_alloc(int size) {{
-    {typeName}* this$ = malloc(sizeof({typeName}));
-    this$->__refcount = 1;
-    this$->length = size;
-    this$->data = calloc(size, sizeof({t.ToTypeString()}));
-    // TODO: initialize values
-    return ({typeName}*)Runtime_autorelease(this$, {typeName}_Destructor);
-}}
-
-void {typeName}_set_Item({typeName}* this$, int index, {t.ToTypeString()} value) {{
-    if (index > this$->length) {{
-        exit(1);
-    }}
-    if (index < 0) {{
-        exit(index);
-    }}
-    {
-        if requiresTracking [] genericParms[0] then
-            let name = t.ToNameString()
-            let tName = name.Substring(0, name.Length - 3)
-            let destructor = tName + "_Destructor"
-            $"Runtime_swap_value((void*)(this$->data + index), value, " + destructor + ");"
-        else
-            "this$->data[index] = value;"
-    }
-}}
-
-{t.ToTypeString ()} {typeName}_get_Item({typeName}* this$, int index) {{
-    if (index > this$->length) {{
-        exit(1);
-    }}
-    if (index < 0) {{
-        exit(index);
-    }}
-    return this$->data[index];
-}}
-void {typeName}_Destructor({typeName}* this$) {{
-    {
-        if (requiresTracking [] genericParms[0]) then
-            match t with
-            | C.AST.C.Ptr t ->
-                $"
-            for (int i = 0; i < this$->length; i++) {{
-                if (this$->data[i] == NULL) {{ continue; }}
-                Runtime_end_var_scope(this$->data[i], {t.ToNameString ()}_Destructor);
-            }}
-                "
-            | _else ->
-                ""
-        else
-            ""
-    }
-    free(this$->data);
-    free(this$);
-}}
-"""
-                if added_types.Contains typeName then
+                let result = Core.writeArray genericParms[0]
+                if added_types.Contains result.name then
                     ()
                 else
-                    added_types.Add typeName
-                    generic_implementations.Add(decl, ctor)
+                    added_types.Add result.name
+                    generic_implementations.Add(result.decl, result.code)
             | Instantiation(fullName, genericParams) when
                     compiler.genericClassDeclarations.Value.ContainsKey fullName
                     || compiler.genericClassDeclarations.Value.ContainsKey $"Fable.{fullName}"
@@ -340,104 +345,7 @@ void {typeName}_Destructor({typeName}* this$) {{
                 #endif
                 () // System.Array
             | MethodCall(memberFunctionOrValue, fableMethodName, genericParams) ->
-                //log $"{Print.printObj 0 (fst usage)}"
-                match memberFunctionOrValue.DeclaringEntity with
-                | Some declaringEntity ->
-                    let ent: Entity option =
-                        compiler.TryGetEntity(declaringEntity.FullName)
-                    match ent with
-                    | None ->
-                        log $"======================= missing entity =============================="
-                        #if !FABLE_COMPILER
-                        log $"{Print.printObj 0 declaringEntity}"
-                        log $"{fableMethodName} - {Print.printObj 0 genericParams}"
-                        #endif
-                        let paramNames =
-                            match snd usage with
-                            | Call (_, info, _, _) ->
-                                info.SignatureArgTypes
-                                |> List.map (fun g ->
-                                    match g with
-                                    | GenericParam (name, _, _) -> Some name | _ -> None)
-                                |> List.filter (Option.isSome)
-                                |> List.map (Option.defaultValue "")
-                            | _ ->
-                                log $"======================= todo handle non call generic member decl entity =============================="
-                                []
-                        let generics = genericParams |> List.zip paramNames
-                        for kv in genericMethodDeclarations.contents do
-                            ()
-                            // log $"%A{kv.Key} - %A{kv.Value.MemberRef}"
-                        // todo: should it be added to the dict with member ref full name?
-                        let methodDeclKey = (declaringEntity.FullName, fableMethodName)
-                        if genericMethodDeclarations.contents.ContainsKey(methodDeclKey) then
-                            let decl = genericMethodDeclarations.contents.[(declaringEntity.FullName, fableMethodName)]
-                            let (function_id, type_sig, function_info) = Function.Generics.addMethodImplementation context generics declaringEntity.FullName true genericParams fableMethodName decl
-                            generic_implementations.Add(type_sig, Writer.writeFunction (SourceBuilder()) function_info)
-                            added_functions.Add(function_id)
-                        else
-                            log $"Unable to find key for entity ({declaringEntity.FullName}, {fableMethodName})"
-                    | Some ent ->
-                        //log $"======================= found entity =============================="
-                        let entityFullName = ent.FullName //.Split("`").[0]
-                        let otherName = $"{ent.DisplayName}_{fableMethodName}"
-                        if (genericMethodDeclarations.contents.ContainsKey (entityFullName, fableMethodName) ||
-                           genericMethodDeclarations.contents.ContainsKey (entityFullName, otherName)) then
-                            let member_declaration =
-                                Map.tryFind (ent.FullName, fableMethodName) genericMethodDeclarations.contents
-                                |> Option.defaultWith (fun () -> genericMethodDeclarations.contents.[(entityFullName,
-                                                                                                      otherName)])
-            //                                      pullGenericTypes <|
-            //                                      (ent.GenericParameters) @
-            //                                      (member_declaration.Args |> List.map (fun a -> a.Type)) @
-            //                                      [ member_declaration.Body.Type ]
-                            let genericArgNames =
-                                (ent.GenericParameters @ memberFunctionOrValue.GenericParameters)
-                                |> List.map (fun p -> p.Name)
-                                |> List.distinct
-                            let generics = (genericParams |> List.zip genericArgNames)
-
-
-                            let typeName = Print.compiledTypeName(List.map (transformType generics) genericParams, declaringEntity)
-                            //let args = (member_declaration.Args |> List.map (fun i -> i.Name, transformType generics i.Type))
-                            let (function_id, type_sig, function_info) = Function.Generics.addMethodImplementation context generics ent.FullName ent.IsValueType genericParams fableMethodName member_declaration
-                            // todo: Do closures defined in generic methods work already? Or is this needed
-                            // let toCompile = Function.gatherAnonymousFunctions context member_declaration.Body
-                            // if toCompile.Length > 0 then
-                            //     ()
-                            if not (added_functions.Contains(function_id)) then
-                                generic_implementations.Add(type_sig, Writer.writeFunction (SourceBuilder()) function_info)
-                                added_functions.Add(function_id)
-                                let generic_instantiations =
-                                    ent.FSharpFields
-                                    |> List.collect (fun f -> Query.genericTypesUsedByType generics compiler f.FieldType)
-                                let generic_instantiations =
-                                    (generic_instantiations @ (List.collect (Query.genericTypesUsedByType generics compiler) (List.map (_.Type) member_declaration.Args)))
-                                    |> List.map (fun i -> i, Unchecked.defaultof<_>)
-                                if generic_instantiations.Length > 0 then
-                                    generic_interactions <- generic_instantiations @ generic_interactions
-                                let generic_instantiations = findGenerics database.contents compiler generics member_declaration.Body |> List.collect id
-                                if generic_instantiations.Length > 0 then
-                                    generic_interactions <- generic_instantiations @ generic_interactions
-                            //let type_sig = Print.compiledTypeSignature (generics, transformType, database.contents, member_declaration)
-                            if fableMethodName.Contains "ctor" then
-                                let finalizer_id = $"{typeName}_Destructor"
-                                if not (added_functions.Contains(finalizer_id)) then
-                                    added_functions.Add(finalizer_id)
-                                    let finalizer_implementation = Function.buildFinalizer generics genericParams ent
-                                    generic_implementations.Add(($"void {typeName}_Destructor({typeName} this$);"), (Writer.writeFunction (SourceBuilder()) finalizer_implementation))
-                        else
-                            // todo WHAT THE FUCK D: <
-                            ()
-//                            let _map = genericMethodDeclarations.contents
-//                            let keys = _map.Keys |> Seq.toArray
-//                            for k in keys do
-//                                debug.log $"%A{k}"
-//                                debug.log $"({entityFullName}, {otherName})"
-//                                debug.log $"are equal = {k = (entityFullName, otherName)}"
-                | None ->
-                    log $"=========================== missing entity ===================================="
-                    () // todo shouldn't happen (except System.Array)
+                writeMethod context memberFunctionOrValue fableMethodName genericParams usage generic_implementations added_functions &generic_interactions
     for (entityFullName, generic_text_types) in generic_macro_defs_to_call do
         if not (entityFullName.StartsWith("Microsoft.FSharp.Core.PrintfFormat")) &&
            not (entityFullName.StartsWith("Microsoft.FSharp.Core.byref")) &&

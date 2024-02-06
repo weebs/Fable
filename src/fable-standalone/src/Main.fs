@@ -436,7 +436,7 @@ let transformToTargetAst
     | Rust ->
         let ast = Rust.Fable2Rust.Compiler.transformFile com fableAst
         upcast RustResult(ast, errors)
-    | Plugin ->
+    | Plugin "C" ->
         let cache = Fable.C.Helpers.database.contents
         cache.SaveFile com fableAst
         let ast = Fable.C.File.transformFile com fableAst
@@ -503,7 +503,7 @@ let getLanguage (language: string) =
     | "php" -> Php
     | "dart" -> Dart
     | "rust" -> Rust
-    | "c" -> Plugin
+    | "c" -> Plugin "C"
     | _ -> failwithf "Unsupported language: %s" language
 
 let init () =
