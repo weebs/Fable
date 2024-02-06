@@ -977,14 +977,15 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                                    else C.MemberAccess
                             | None -> C.DerefMemberAccess
                     | Array(genericArg, arrayKind) -> C.DerefMemberAccess
+                    | String -> C.DerefMemberAccess
                     // todo
                     | Tuple(genericArgs, isStruct) ->
                         if isStruct then C.MemberAccess else C.DerefMemberAccess
                     | _ -> C.MemberAccess
                 match e.Type with
-                | String ->
-                    C.Expr.Emit <|
-                        "strlen(" + (Writer.writeExpression (transformExpr ctx generics e)) + ")"
+                // | String ->
+                    // C.Expr.Emit <|
+                        // "strlen(" + (Writer.writeExpression (transformExpr ctx generics e)) + ")"
                 // | Array (typ, kind: ArrayKind) ->
                 //     C.DerefMemberAccess(transformExpr ctx generics expr, info.Name)
                 | _ -> accessType (transformExpr ctx generics e, info.Name)
