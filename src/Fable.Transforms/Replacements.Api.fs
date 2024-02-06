@@ -90,6 +90,16 @@ let tryCall (com: ICompiler) ctx r t info thisArg args =
         | "OfNativeIntInlined", _mod when _mod = ptrModule ->
             Helper.LibCall(com, ptrModule, "OfNativeIntInlined", t, args, ?loc=r)
             |> Some
+        | "AllocHGlobal", "System.Runtime.InteropServices.Marshal" ->
+            Helper.LibCall(com, info.DeclaringEntityFullName, info.CompiledName, t, args, ?loc=r)
+            |> Some
+        | "FreeHGlobal", "System.Runtime.InteropServices.Marshal" ->
+            Helper.LibCall(com, info.DeclaringEntityFullName, info.CompiledName, t, args, ?loc=r)
+            |> Some
+        | "Exit", "Microsoft.FSharp.Core.Operators"
+        | _, "Microsoft.FSharp.NativeInterop.NativePtrModule" ->
+            Helper.LibCall(com, info.DeclaringEntityFullName, info.CompiledName, t, args, ?loc=r)
+            |> Some
         | ".ctor", entityName when entityName.StartsWith "Microsoft.FSharp.Core.PrintfFormat" ->
             let replaced = JS.Replacements.tryCall com ctx r t info thisArg args
             replaced
