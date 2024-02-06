@@ -72,7 +72,11 @@ let valueToString (value: C.ValueKind) : string =
     match value with
     | C.ValueKind.CStr s -> $"\"{s}\""
     | C.ValueKind.Char c ->
-        let s = (string c).Replace("\n", "\\n").Replace("\t", "\\t")
+        let s =
+            (string c)
+                .Replace("\000", "\\0")
+                .Replace("\n", "\\n")
+                .Replace("\t", "\\t")
         $"'{s}'"
     | C.ValueKind.Void -> ""
     | C.ValueKind.Bool b ->
