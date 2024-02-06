@@ -360,7 +360,12 @@ let parseFiles projectFileName options : _ Async =
             for fileName in fileNames do
                 printfn $"{fileName}"
                 // transform F# AST to target language AST
-                let res, ms2 = measureTime parseFable (parseRes, fileName)
+                let res, ms2 = 
+                    try
+                        measureTime parseFable (parseRes, fileName)
+                    with error -> 
+                        printfn $"{error.ToString()}"
+                        failwith (string error)
                 printfn "File: %s, Fable time: %d ms" fileName ms2
                 res.FableErrors |> printErrors showWarnings
 
