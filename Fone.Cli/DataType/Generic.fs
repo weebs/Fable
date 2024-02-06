@@ -154,6 +154,7 @@ let findGenericInteractionsFromNonGenerics (path: string) (projHeaderName: strin
 
 
 let generateGenericImplementations context path projHeaderName : string * Generic.List<string * string> =
+    printfn "Generating generic implementations"
     let declarations = CompiledOutputBuilder()
     let sb = StringBuilder()
     for kv in compiler.genericClassDeclarations.Value do
@@ -226,6 +227,7 @@ let generateGenericImplementations context path projHeaderName : string * Generi
             )
         generic_interactions <- []
         for usage in temp do
+            printfn $"Generic: %A{usage}"
             match fst usage with
             | Closure(captured, types, ``return``) ->
                 let info = Func.writeClosure captured types ``return``
