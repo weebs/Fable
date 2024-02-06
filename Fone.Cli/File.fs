@@ -178,8 +178,16 @@ let transformFile (_com: Fable.Compiler) (file: File) =
     let mutable static_constructor: (ActionDecl * C.Statement list) list = []
     let rec loop decl =
         match decl with
-        | ModuleDeclaration moduleDecl -> List.map loop moduleDecl.Members |> List.collect id | decl -> [ decl ]
-    let declarations = file.Declarations |> List.map loop |> List.collect id
+        | ModuleDeclaration moduleDecl ->
+            List.map loop moduleDecl.Members
+            |> List.collect id
+        | ClassDeclaration classDecl ->
+            [ ClassDeclaration classDecl; yield! List.map MemberDeclaration classDecl.AttachedMembers ]
+        | decl -> [ decl ]
+    let declarations =
+        file.Declarations
+        |> List.map loop
+        |> List.collect id
     for decl in declarations do
         match decl with
         | MemberDeclaration memberDecl when memberDecl.Args.Length = 0 ->
