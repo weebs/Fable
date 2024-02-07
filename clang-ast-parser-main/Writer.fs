@@ -3,7 +3,7 @@ open System; open FSharp.Reflection; open Ast; open FParsec
 open FSharp.Data.LiteralProviders
 open clang_ast_parser
 open Fli
-                                                             
+
 let args = System.Environment.GetCommandLineArgs()
 printfn $"Args = %A{args}"
 
@@ -16,31 +16,50 @@ let runCmd (cmd: string) =
         // Command cmd
     }
     |> Command.execute
-
+let runClang path =
+    runCmd $"clang {path} -I. -std=c11 -Xclang -ast-dump -fsyntax-only -fno-color-diagnostics -Wno-visibility"
 let filePath =
     let path =
         if args.Length > 1 && args[1].EndsWith "clang-ast-parser.fsproj" = false then
-            args[1] 
+            args[1]
         else
            // "/tmp/bindings.txt"
-           "/usr/include/portmidi.h"
-    if path.EndsWith ".h" then
-        let name = IO.Path.GetFileNameWithoutExtension path 
-        let result = runCmd $"clang {path} -I. -std=c11 -Xclang -ast-dump -fsyntax-only -fno-color-diagnostics -Wno-visibility"
-        let fileName = name + ".txt"
-        IO.File.WriteAllText (name + ".txt", result.Text.Value)
-        // let dir = IO.Path.GetDirectoryName filePath
-        fileName
-    else
-        path
+           IO.Path.Join(__SOURCE_DIRECTORY__, "gdextension.h")
+           // "/usr/include/portmidi.h"
+    let path = IO.Path.GetFullPath path
+    // if path.EndsWith ".h" then
+    //     let name = IO.Path.GetFileNameWithoutExtension path
+    //     let result = runClang path
+    //     // let fileName = name + ".txt"
+    //     // IO.File.WriteAllText (name + ".txt", result.Text.Value)
+    //     // let dir = IO.Path.GetDirectoryName filePath
+    //     fileName
+    // else
+    //     path
+    path
 
 let inline debug (msg: 't) = System.Console.WriteLine $"%A{msg}"
 try
-    let fileText = printfn $"Reading file: {System.IO.Path.GetFullPath(filePath)}"; System.IO.File.ReadAllText(System.IO.Path.GetFullPath(filePath))
+    let fileText =
+        let result = runClang filePath
+        result
+        |> _.Text
+        |> function
+            | Some text -> text
+            | None -> failwith $"clang failed to run: exit code {result.ExitCode} {result.Error}"
+        // printfn $"Reading file: {System.IO.Path.GetFullPath(filePath)}"
+        // System.IO.File.ReadAllText(System.IO.Path.GetFullPath(filePath))
 
-    let t =
-        async {
-            let! parsedContent = (File.parse fileText)
+    // let t =
+        // async {
+    do
+            let debugTextPath =
+                IO.Path.Join(
+                    IO.Path.GetDirectoryName(filePath),
+                    IO.Path.GetFileNameWithoutExtension(filePath) + ".clang_ast.txt"
+                )
+            IO.File.WriteAllText(debugTextPath, fileText)
+            let parsedContent = (File.parse fileText) |> Async.RunSynchronously
             let parsedContent = parsedContent |> Array.collect Seq.toArray
             let parsed = parsedContent |> Array.map (fun (line, e) -> match e with | Success (element, state, pos) -> Some (line, element) | _ -> None) |> Array.filter Option.isSome |> Array.map Option.get
             let failedToParse = parsedContent |> Array.map (fun (line, e) -> match e with | Failure (error, parserError, state) -> Some (line, error, parserError) | _ -> None) |> Array.filter Option.isSome |> Array.map Option.get
@@ -55,44 +74,50 @@ try
             for typ in elementNodeTypeNames do
                 printfn $"{typ}"
             printfn ""
-            let byType = 
-                parsed |> Array.mapi (fun i item -> i, item) 
+            let byType =
+                parsed |> Array.mapi (fun i item -> i, item)
                 |> Array.groupBy (fun (index, (line, parsed)) -> parsed.Type)
             for (typ, items) in byType do
                 printfn $"{typ} "
             // printfn $"""%A{debug Parser.Type.parse "void (*)(struct SoundIO *, int)"}"""
             // |> ignore
-            // let tuple = 
+            // let tuple =
             //     manyCharsTill anyChar (pchar '(') .>>. pchar '*' .>>. manyCharsTill anyChar (pchar ')') .>>. manyCharsTill anyChar (pchar ')')
             // let tuple =
             //     many1Chars (noneOf [ '(' ]) .>>. pchar '('
             // debug Parser.Type.tuple "void (*foo)(int, void (*yo)(int, double, string, char*))"
 
             printfn "Declarations"
-            let! fileDecls = parseFile parsed
-            let file = 
-                fileDecls 
-                |> Array.collect id 
-                |> Array.groupBy (fun item -> 
+            let fileDecls = parseFile parsed |> Async.RunSynchronously
+            let file =
+                fileDecls
+                |> Array.collect id
+                |> Array.distinct
+                |> Array.groupBy (fun item ->
                     (FSharpValue.GetUnionFields (item, item.GetType()) |> fst).Name)
             let types = Map.ofArray file
             printfn $"%A{types.Keys |> Seq.toArray}"
 
 
-            let typedefStructs = 
-                types["Struct"] 
-                |> Array.choose (fun (Struct (name, fields)) -> 
+            let typedefStructs =
+                types["Struct"]
+                |> Array.choose (fun (Struct (name, fields)) ->
                     // let defs =
-                        types["Typedef"] 
-                        |> Array.tryPick (fun (Typedef (typedefAlias, typedefType)) -> 
+                        types["Typedef"]
+                        |> Array.tryPick (fun (Typedef (typedefAlias, typedefType)) ->
                             // if typedefAlias = name
                             match typedefType with
                             | Parser.Type.ArgType.TypeName def when def = name ->
-                                Some (name, fields, typedefAlias) 
+                                Some (name, fields, typedefAlias)
                             | _ -> None)
-                    // if defs then Some 
+                    // if defs then Some
                 )
-            let typeDefs = types["Typedef"] |> Array.map (fun (Typedef (typedefAlias, typedefType)) -> Type.toFSharp typedefType, typedefAlias) |> Map.ofArray
+            let typeDefs =
+                types["Typedef"]
+                |> Array.map (fun (Typedef (typedefAlias, typedefType)) ->
+                    typedefAlias, Type.toFSharp (typedefAlias, typedefType)
+                )
+                |> Map.ofArray
 
             for (name, items, typedef) in typedefStructs do
                 printfn $"""struct {name}"""
@@ -101,6 +126,7 @@ try
             let items =
                 fileDecls
                 |> Array.collect id
+                |> Array.distinct
                 |> Array.sortBy (function
                     | Function _ ->
                         5
@@ -131,11 +157,11 @@ try
                 for item in items do
                     match item with
                     | Var (name, typ) ->
-                        printfn $"{name} : {Type.toFSharp typ}"
+                        printfn $"{name} : {Type.toFSharp (name, typ)}"
                     | Function (name, returnType, args) ->
-                        // let text = 
-                        //     args |> Array.map (fun (name, argType) -> 
-                        //         $"{Type.toFSharp argType} {name.Trim()}") 
+                        // let text =
+                        //     args |> Array.map (fun (name, argType) ->
+                        //         $"{Type.toFSharp argType} {name.Trim()}")
                         //     |> String.concat ", "
                         // let returnType =
                             // (Type.toFSharp returnType).Replace("unit", "void")
@@ -143,7 +169,11 @@ try
                         printfn (DefsGenerator.writeFunction moduleName isFable name returnType args)
                     | Struct (name, variables) ->
                         if not (Array.contains name ignoredStructs)  then
-                            let def =  DefsGenerator.writeStruct isFable typeDefs name variables
+                            let structFields =
+                                typeDefs
+                                |> Seq.map (fun kv -> kv.Key, fst kv.Value)
+                                |> Map.ofSeq
+                            let def =  DefsGenerator.writeStruct isFable structFields name variables
                             printfn def
                         // let name =
                         //     if typeDefs.ContainsKey ("struct " + name) then
@@ -178,7 +208,7 @@ try
                             else
                                 enumCases
                         printfn $"type {name} ="
-                        let suffix = 
+                        let suffix =
                             match Array.head enumCases with
                             | Label (_, Parser.Type.ArgType.TypeName n, caseValue) ->
                                 match n with
@@ -202,12 +232,16 @@ try
                     | Typedef (name, typedefType) -> //when (Parser.Type.ArgType.TypeName name) <> typedefType ->
                         let ignoredDefs = [| "__builtin_va_list"; "__NSConstantString"; "__int128_t"; "__uint128_t"; "__uint128_t"; "khronos_boolean_enum_t" |]
                         // let printfn = ignore
-                        let fsTypeDef = 
-                            Type.toFSharp typedefType
-                            |> function
-                                | s when s.Contains "->" -> "\n    delegate of " + s
-                                | s -> s
+                        let fsTypeDef, deps =
+                            Type.toFSharp (name, typedefType)
+                            // |> function
+                            //     | s when s.Contains "->" -> "\n    delegate of " + s
+                            //     | s -> s
+                        // let fsTypeDef = fsTypeDef.Replace("nativeptr<", "byref<")
                         if not (Array.contains name ignoredDefs) then
+                            for item in deps do
+                                // printfn (item.Replace("nativeptr<", "byref<"))
+                                printfn item
                             if name <> fsTypeDef then
                                 if fsTypeDef = "unit" then
                                     printfn $"type {name} = struct end"
@@ -219,7 +253,8 @@ try
             printfn "Async!"
             // let file = sb.ToString().Replace("type khronos_boolean_enum_t = enum khronos_boolean_enum_t", "// TODO: ENUMS")
             // System.IO.File.WriteAllText(__SOURCE_DIRECTORY__ + "/opengl.fs", sb.ToString())
-            let outPath = "lib." + System.IO.Path.GetFileNameWithoutExtension(filePath) + ".fs"
+            let name = System.IO.Path.GetFileNameWithoutExtension(filePath)
+            let outPath = IO.Path.Join(IO.Path.GetDirectoryName(filePath), $"lib.{name}.fs")
             // printfn $"{sb.ToString()}"
             let outputText =
                 sb
@@ -228,13 +263,14 @@ try
                     .Replace("**", "* *")
                     .Replace("unsigned char", "byte")
             Console.WriteLine outputText
-            printfn $"Writing FFI sources to ${outPath}"; System.IO.File.WriteAllText(outPath, outputText)
-        }
+            printfn $"Writing FFI sources to {outPath}"
+            System.IO.File.WriteAllText(outPath, outputText)
+        // }
 
-    if args[0].EndsWith "clang-ast-parser.dll" then
-        t |> Async.RunSynchronously
-    else
-        t |> Async.Start
+    // if args[0].EndsWith "clang-ast-parser.dll" then
+    //     t |> Async.RunSynchronously
+    // else
+    //     t |> Async.Start
     // debug Parser.functionDecl "addr <addr> addr add 'int (int, int)'"
 
     // debug Parser.functionDecl "0x55922a3ad7d8 <line:175:1, col:132> col:6 emscripten_dlopen 'void (const char *, int, void *, em_dlopen_callback, em_arg_callback_func)'"

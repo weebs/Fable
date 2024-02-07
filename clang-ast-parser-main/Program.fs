@@ -8,7 +8,7 @@ open System.Runtime.InteropServices
 
 
 module libc =
-    [<DllImport("libc")>] 
+    [<DllImport("libc")>]
     extern void printf(string s)
 // let inline printfn (format: Printf.TextWriterFormat<_>) =
 
@@ -34,13 +34,13 @@ let debug p text =
 type FileElement = { Indentation: int; Prefix: string; StartToken: string; Type: string; Text: string }
 
 module File =
-    let parser = 
-        (pstring "|" <|> pstring "`" <|> pstring " ") >>. 
-        (attempt (manyChars (pchar ' ' <|> pchar '|' <|> pchar '`'))) .>>. 
+    let parser =
+        (pstring "|" <|> pstring "`" <|> pstring " ") >>.
+        (attempt (manyChars (pchar ' ' <|> pchar '|' <|> pchar '`'))) .>>.
         (pstring "`-" <|> pstring "|-" <|> pstring "-" <|> pstring "|") .>>.
         (attempt (manyCharsTill anyChar (pchar ' ')) <|> manyChars anyChar) .>>.
         manyChars anyChar
-        |>> (fun (((indentation, startToken), title), text) -> { 
+        |>> (fun (((indentation, startToken), title), text) -> {
             Prefix = indentation
             Indentation = indentation.Length
             StartToken = startToken
@@ -49,7 +49,7 @@ module File =
         })
     let start =
         pstring "TranslationUnitDecl" >>. manyChars anyChar |>> (fun state -> "TranslationUnitDecl" + state)
-        
+
 
     let parse (file_contents: string) =
         // let file_contents () = TextFile.GL.``gl.h``.Text
@@ -84,10 +84,10 @@ module Parser =
         manyChars anyChar |>> (fun s -> s.Split ", ")
     let returnType =
         manyCharsTill anyChar (pchar '(')
-    let fn2 = 
+    let fn2 =
         (pipe2 returnType functionArguments (fun returns args -> (returns, args)))
     let functionSignature =
-        returnType .>>. 
+        returnType .>>.
         // ((manyCharsTill anyChar (pchar ')') |>> run functionArguments))
         ((manyCharsTill anyChar (pchar ')') >>= (fun state -> fun stream -> Reply(state.Split ", "))))
         |>> (fun (typ, args) -> {| Return = typ; Args = args |})
@@ -97,7 +97,7 @@ module Parser =
         >>. manyCharsTill anyChar (pchar ' ') .>>.
         (attempt (pstring "used " |>> Some) <|>% None) .>>
         // manyChars (noneOf ['\'']) '\''
-        (pchar '\'') .>>. 
+        (pchar '\'') .>>.
         manyCharsTill anyChar (pchar '\'') .>>.
         (attempt (manyChars anyChar))
         // |>> fun ((name, signature), rest) -> {| Name = name; Signature = run functionSignature signature; Remaining = rest |}
@@ -105,8 +105,8 @@ module Parser =
     let nodeAddress =
         manyCharsTill anyChar (pchar ' ') .>> (optional ((pstring "parent " <|> pstring "prev ") .>> manyCharsTill anyChar (pchar ' ')))
     let fileSource =
-        // attempt (pstring "<<invalid sloc>> ") <|> 
-        // (pchar '<' >>. ((attempt (pstring "<invalid sloc>>")) <|> 
+        // attempt (pstring "<<invalid sloc>> ") <|>
+        // (pchar '<' >>. ((attempt (pstring "<invalid sloc>>")) <|>
         (pstring "<<invalid sloc>> ") <|> (manyCharsTill anyChar (pstring "> " |>> (fun _ -> '>')))
 
         // |>> fun (_, file) -> file
@@ -120,7 +120,7 @@ module Parser =
         .>> optional (pstring "implicit ")
         .>> optional (pstring "invalid ")
     let functionDecl =
-        nodeAddress 
+        nodeAddress
         .>>. fileSource
         .>> optionalKeyword
         // pchar '<' .>>. manyCharsTill anyChar (pstring "> " |>> (fun _ -> '>'))
@@ -151,18 +151,18 @@ module Parser =
         .>>. (attempt (pchar ':' >>. pchar '\'' >>. manyCharsTill anyChar (pchar '\'')) <|>% "")
         .>> eof
 
-    
+
     module Type =
         type ArgType =
             | TypeName of string
-            | FunctionPrototype of returnType: ArgType * args: (ArgType list)
+            | FunctionPrototype of returnType: ArgType * args: ArgType list
         let parse, parseRef = createParserForwardedToRef<ArgType, unit>()
         let parseArgs, parseArgsRef = createParserForwardedToRef<ArgType, unit>()
         // For types like (struct Foo *, int, unsigned long, char**)
         let simpleType =
             attempt (manyCharsTill anyChar (pchar ' ' <|> pchar '*') .>>. manyChars (pchar '*') |>> (fun (a, b) -> a + b)) <|> manyChars anyChar
-            
-        // do parseRef := 
+
+        // do parseRef :=
         let runParser (state: string) : ParserResult<ArgType, _> =
             if state.Contains "(" then // Function pointer
                 // FunctionPointer (TypeName "", [])
@@ -173,8 +173,35 @@ module Parser =
             manyCharsTill anyChar (pchar ')') .>> pchar '('
         let parseFn =
             manyCharsTill anyChar (pchar '(') .>> pchar '*' .>> functionPrototypeName .>>. (parse) .>> pchar ')'
-        let tuple : Parser<_,unit> = 
-            many1CharsTill (noneOf [','; ')']) (pchar '(') .>> pchar '*' .>>. manyCharsTill anyChar (pchar ')') .>> pchar '(' .>>. many parse .>> (optional (pchar ')'))  //manyCharsTill anyChar (pchar ')')
+        let identifier =
+            // many1CharsTill anyChar (anyOf ['('; ','; ')'; '*'])
+            many1Chars (noneOf ['('; ','; ')'; '*'])
+        let fuckinfk result : Parser<_,_> =
+            fun stream ->
+                if true then Reply 'a'
+                else Reply(ReplyStatus.Error, NoErrorMessages)
+        let cType =
+            identifier .>>. (many (anyOf ['*'; ' ']))
+            |>> fun (id, rest) ->
+                id + (rest |> List.map string |> String.concat "")
+        let tuple : Parser<_,unit> =
+            many1CharsTill (noneOf [','; ')']) (pchar '(')
+            .>> pchar '*'
+            .>>. manyCharsTill anyChar (pchar ')')
+            .>> pchar '('
+            .>>. many parse
+            // .>> pchar ')'
+            .>> (optional (pchar ')'))  //manyCharsTill anyChar (pchar ')')
+            |>> fun tpl ->
+                printfn "tpl"
+                tpl
+        let functionPointer =
+            cType
+            .>> pchar '(' .>> pchar '*' .>> (optional identifier) .>> pchar ')' |>> (fun id ->
+                id)
+            .>> pchar '('
+            .>>. (many (parse .>> (optional (pchar ','))))
+            .>> pchar ')'
         do parseRef.contents <-
                 // attempt simpleType |>> TypeName
                 // manyChars (noneOf [ '('; ' '; ')' ]) |>> (fun name -> printfn "\nmanyChars noneOf [ (; _; ) ]\n"; TypeName "oi")
@@ -182,14 +209,23 @@ module Parser =
                 // (attempt tuple |>> fun r -> printfn $"%A{r}"; Unchecked.defaultof<_>) <|>
                 // (attempt (
                 //     parseFn
-                //     // ((manyCharsTill anyChar (pchar '(' >>. pchar '*' >>. manyCharsTill anyChar (pchar ')' >>. pchar '(')) .>>. (many parse)) 
-                //         |>> fun (returnType, args) -> 
+                //     // ((manyCharsTill anyChar (pchar '(' >>. pchar '*' >>. manyCharsTill anyChar (pchar ')' >>. pchar '(')) .>>. (many parse))
+                //         |>> fun (returnType, args) ->
                 //                 FunctionPrototype (TypeName <| "void (*) " + returnType, [args])
                 //     )
                 // )
-                (attempt (tuple |>> fun ((returnType, name), argType) -> FunctionPrototype (TypeName returnType, argType)))
-                <|> (attempt (many1CharsTill anyChar (pchar ',') .>> pchar ' ' |>> TypeName))
-                <|> (attempt (many1CharsTill anyChar (pchar ')') |>> TypeName))
+                // (identifier |>> TypeName) <|>
+                // (cType |>> TypeName) <|>
+                // (attempt (tuple |>> fun ((returnType, name), argType) ->
+                    // FunctionPrototype (TypeName returnType, argType)))
+                (attempt functionPointer |>> fun (returnType, args) ->
+                    FunctionPrototype (TypeName returnType, args)
+                )
+                <|> (attempt cType |>> TypeName)
+                // <|> (attempt (many1CharsTill anyChar (pchar ',') .>> pchar ' ' |>> TypeName))
+                <|> (attempt (many1Chars (noneOf [',']) .>> pchar ' ' |>> TypeName))
+                // <|> (attempt (many1CharsTill anyChar (pchar ')') |>> TypeName))
+                <|> (attempt (many1Chars (noneOf [')']) |>> TypeName))
                 <|> (many1Chars (noneOf [','; ')'; '(']) |>> TypeName) // (attempt (many1Chars (noneOf [ '('; ','; ')' ]) .>> pchar '\n' |>> TypeName))
 
     let fieldDecl =
@@ -201,17 +237,17 @@ module Parser =
         .>>. manyChars anyChar |>> fun (r, rest) -> {| r with Rest = rest |}
 
     let address =
-        nodeAddress .>>. 
-        fileSource .>>. 
+        nodeAddress .>>.
+        fileSource .>>.
         fileSource2 //.>>.
     let record =
-        nodeAddress .>>. 
-        fileSource .>>. 
+        nodeAddress .>>.
+        fileSource .>>.
         fileSource2 //.>>.
         |>> (fun ((addr, fileSource), fileSource2) -> {| Address = addr; Source = [| fileSource; fileSource2 |] |}) .>>
         (pstring "struct" <|> pstring "union") .>>
-        (optional (pchar ' ')) .>>. 
-        (attempt (manyCharsTill anyChar (pchar ' ')) <|> manyChars anyChar) .>>. 
+        (optional (pchar ' ')) .>>.
+        (attempt (manyCharsTill anyChar (pchar ' ')) <|> manyChars anyChar) .>>.
         (attempt ((attempt (manyChars anyChar) <|>% "") <|> preturn ""))
         |>> fun ((r, structName), rest) -> {| r with Name = structName; Rest = rest |}
     let enumDecl =
@@ -224,7 +260,7 @@ module Parser =
         address .>>. manyCharsTill anyChar (pchar ' ') .>> pchar '\'' .>> manyChars (noneOf [ '\'' ])  .>> pchar '\''
 
     let enumConstantDecl =
-        address .>>. manyCharsTill anyChar (pchar ' ') .>> pchar '\'' 
+        address .>>. manyCharsTill anyChar (pchar ' ') .>> pchar '\''
         .>>. manyChars (noneOf [ '\'' ]) |>> fun (rest, t) -> rest, run Type.parse t
         .>> pchar '\''
 
@@ -236,8 +272,16 @@ module Parser =
         "EnumDecl", enumDecl |>> sprintf "%A"
         "EnumConstantDecl", enumConstantDecl |>> sprintf "%A"
     ]
+
+open Parser.Type
+
 type EnumCase = Label of string * Parser.Type.ArgType * value: obj
-type Decl = Var of string * Parser.Type.ArgType | Enum of string * Parser.Type.ArgType * EnumCase[] | Struct of string * (string * Parser.Type.ArgType)[] | Typedef of string * Parser.Type.ArgType | Function of string * returns: Parser.Type.ArgType * args: (string * Parser.Type.ArgType)[]
+type Decl =
+    | Var of string * Parser.Type.ArgType
+    | Enum of string * Parser.Type.ArgType * EnumCase[]
+    | Struct of string * (string * Parser.Type.ArgType)[]
+    | Typedef of string * Parser.Type.ArgType
+    | Function of string * returns: Parser.Type.ArgType * args: (string * Parser.Type.ArgType)[]
 let parseFile (parsed: (string * FileElement)[]) : Async<Decl[][]> =
     let byIndex =
         parsed
@@ -248,14 +292,14 @@ let parseFile (parsed: (string * FileElement)[]) : Async<Decl[][]> =
         |> Array.filter (fun (_, item) -> item.Indentation = 0)
         |> Array.mapi (fun i item -> i, item)
         |> Map.ofArray
-    let byType = 
-        parsed |> Array.mapi (fun i item -> i, item) 
+    let byType =
+        parsed |> Array.mapi (fun i item -> i, item)
         |> Array.groupBy (fun (index, (line, parsed)) -> parsed.Type)
         |> Map.ofArray
-    let leafNodes index = 
+    let leafNodes index =
         let (_, element) = parsed |> Seq.skip index |> Seq.head
         parsed |> Seq.skip (index + 1) |> Seq.takeWhile (fun (string, el) -> el.Indentation > element.Indentation)
-    let leafNodesWithIndex index = 
+    let leafNodesWithIndex index =
         let (_, element) = parsed |> Seq.skip index |> Seq.head
         parsed |> Seq.mapi (fun i elem -> i, elem) |> Seq.skip (index + 1) |> Seq.takeWhile (fun (string, (_, el)) -> el.Indentation > element.Indentation)
     let parseTypedef element =
@@ -267,11 +311,11 @@ let parseFile (parsed: (string * FileElement)[]) : Async<Decl[][]> =
             | error -> Result.Error $"TypedefDecl:\n{error}"
             // printfn $"Parsing: {typ}"
             // |> ignore
-        | error -> 
+        | error ->
             Result.Error $"Typedef error %A{error}"
     [|
-        for kv in byType do 
-            yield (async { 
+        for kv in byType do
+            yield (async {
                 return [|
                 let typ = kv.Key
                 let items = kv.Value
@@ -293,18 +337,18 @@ let parseFile (parsed: (string * FileElement)[]) : Async<Decl[][]> =
                                 let fields = [|
                                     for (text, element) in nodes do
                                         match run Parser.fieldDecl element.Text with
-                                        | Success (result, state, pos) -> 
+                                        | Success (result, state, pos) ->
                                             // yield (sprintf "%A" result)
                                             // yield (sprintf "%A" (run Parser.Type.parse result.Type))
                                             match run Parser.Type.parse result.Type with
-                                            | Success (t, state, pos) -> 
+                                            | Success (t, state, pos) ->
                                                 // printfn $"    {result.Name} = {t}"
                                                 yield (result.Name, t)
                                             | error -> printfn $"%A{error}"
                                             // printfn $"\t\t\t\t {result.Name}:\n{run Parser.Type.parse result.Type}"
                                             // let s = "\n"
                                             ()
-                                        | result -> 
+                                        | result ->
                                             printfn $"%A{result}"
                                             ()
                                 |]
@@ -323,11 +367,11 @@ let parseFile (parsed: (string * FileElement)[]) : Async<Decl[][]> =
                                     yield Struct (result.Name, fields)
                         | error -> printfn $"{error}"
                                 // yield typ
-                                
+
                             // for (text, element) in elements do
                                 // printfn "%A" element
                                 // printfn "%A" text
-                    // |] 
+                    // |]
                     // |> Array.distinct
                     // printfn $"%A{(Array.distinct allTypes)}"
                     ()
@@ -345,7 +389,7 @@ let parseFile (parsed: (string * FileElement)[]) : Async<Decl[][]> =
                         | Success (result, state, pos) ->
                             // printfn $"finding values for %A{element}"
 
-                            let paramValues = 
+                            let paramValues =
                                 parsed |> Seq.skip (index + 1) |> Seq.takeWhile (fun (_, el) -> el.Indentation > element.Indentation)
                                 |> Seq.filter (fun (_, element) -> element.Type = "ParmVarDecl")
                             let args = [|
@@ -361,13 +405,13 @@ let parseFile (parsed: (string * FileElement)[]) : Async<Decl[][]> =
                                                 // printf $"{fn_or_typedef}\t\t"
                                                 // printfn $"{fn}"
                                                 match (run Parser.Type.parse fn) with
-                                                | Success (result, state, pos) -> 
+                                                | Success (result, state, pos) ->
                                                     // Result.Ok result
                                                     if not (String.IsNullOrEmpty fn_or_typedef) then
                                                         yield (fn_name, Parser.Type.ArgType.TypeName fn_or_typedef)
                                                     else
                                                         yield (fn_name, result)
-                                                | Failure (text, error, state) -> 
+                                                | Failure (text, error, state) ->
                                                     // Result.Error <| sprintf "%A" error
                                                     ()
                                             else
@@ -378,7 +422,7 @@ let parseFile (parsed: (string * FileElement)[]) : Async<Decl[][]> =
                                         // printfn $"%A{typ}"
                                         // printfn $"%A{parmVarDecl}"
                                         // printfn $"{firstChar[0]}{typ}"
-                                    | result -> 
+                                    | result ->
                                         printfn $"%A{result}"
                             |]
                             match result.Declaration with
@@ -389,7 +433,7 @@ let parseFile (parsed: (string * FileElement)[]) : Async<Decl[][]> =
                                 | _ -> ()
                             | _ -> ()
                             // match (run  parmVarDecl result)
-                        | parsed -> 
+                        | parsed ->
                             printfn $"%A{parsed}"
                     ()
                 elif typ = "EnumDecl" then
@@ -415,7 +459,7 @@ let parseFile (parsed: (string * FileElement)[]) : Async<Decl[][]> =
                                             Label (caseName, t, null)
                                         else
                                             let (constIndex, constExpr) = leafNodesWithIndex i |> Seq.head
-                                            let _nodes = leafNodes constIndex |> Array.ofSeq 
+                                            let _nodes = leafNodes constIndex |> Array.ofSeq
                                             let (_, valueExpr) = _nodes |> Seq.find (fun (nodeText, node) -> node.Type = "value:")
                                             let (wasParsed, value) = valueExpr.Text.Split(" ") |> Array.last |> Int32.TryParse
                                             Label (caseName, t, value)
@@ -426,10 +470,10 @@ let parseFile (parsed: (string * FileElement)[]) : Async<Decl[][]> =
                         // let nodes = leafNodes index
                         // let enumCases = [|
                         //     for (str, e) in nodes do
-                        //         match e.Type with 
+                        //         match e.Type with
                         //         | "EnumConstantDecl" ->
                         //             match run Parser.enumConstantDecl e.Text with
-                        //             | Success (((addr, caseName), (Success (t, _, _))), _, _) -> 
+                        //             | Success (((addr, caseName), (Success (t, _, _))), _, _) ->
                         //                 Label (caseName, t, null)
                         //             | _ -> ()
                         //         | _ -> ()
@@ -462,7 +506,7 @@ let parseFile (parsed: (string * FileElement)[]) : Async<Decl[][]> =
                     //         |> ignore
                     //         printfn "\n"
                     ()
-            |] 
+            |]
         }) |] |> Async.Parallel
         // printfn $"{items}\n"
 open Parser.Type
@@ -471,8 +515,11 @@ type Type() =
         match t.Trim() with
         | "_Bool" -> "bool"
         | "void" -> "unit"
+        | "long long" -> "int64"
         | "unsigned int" -> "uint"
         | "unsigned long" -> "uint64"
+        // TODO
+        | "unsigned long long" -> "uint64"
         | "float" -> "single"
         | "unsigned char" -> "byte"
         | "signed char" -> "sbyte"
@@ -488,10 +535,10 @@ type Type() =
             | "unit" -> "nativeint"
             | t -> "nativeptr<" + t + ">" //, t.Length - (t.IndexOf("[")) - 1)) + ">"
         | t -> t
-    static member toFSharp t : string = Type.toFSharp (false, t)
-    static member toFSharp (isStruct: bool, t) : string =
+    static member toFSharp (alias, t) : string * (string list) = Type.toFSharp (alias, false, t)
+    static member toFSharp (alias: string, isStruct: bool, t) : string * _ list =
         match t with
-        | TypeName name -> 
+        | TypeName name ->
             let parts = name.Split(' ')
             if name.Contains "*" then
                 let n = (name.ToCharArray() |> Array.filter (fun c -> c = '*')).Length
@@ -509,11 +556,48 @@ type Type() =
                 | t -> t
             else
                 mapBaseType name
-        | FunctionPrototype (returns, args) when not isStruct -> 
-            (args |> List.map Type.toFSharp |> String.concat " * ") + " -> " + (Type.toFSharp returns)
+            |> fun result -> result, []
+        | FunctionPrototype (returns, args) when not isStruct ->
+            let args =
+                match args with
+                | [] -> [ ArgType.TypeName "unit" ]
+                | _ -> args
+            let rec loop (argsAcc: _ list) acc args =
+                match args with
+                | (FunctionPrototype (fpReturns, fpArgs))::rest ->
+                    let argIndex = argsAcc.Length + 1
+                    let delegateName = $"{alias}_Arg{argIndex}"
+                    let (s, deps) =
+                        (Type.toFSharp (delegateName, false, FunctionPrototype (fpReturns, fpArgs)))
+                    loop
+                        (TypeName delegateName::argsAcc)
+                        ($"type {delegateName} = {s}"::deps @ acc)
+                        rest
+                | _else::rest ->
+                    loop (_else::argsAcc) acc rest
+                | [] ->
+                    argsAcc |> List.rev, acc
+            let args, dependencies = loop [] [] args
+            let argsWithDeps =
+                args |> List.map (fun a -> Type.toFSharp (alias, a))
+            let argStrings =
+                args |> List.map (fun a -> Type.toFSharp (alias, a)) |> List.map fst |> String.concat " * "
+                // argsWithDeps |> List.map fst |> String.concat " * "
+            let argsDeps =
+                argsWithDeps
+                // todo
+                // |> List.map (fun (x, xs) -> x::xs)
+                |> List.map snd
+                |> List.collect id
+            let returnString, returnsDeps = Type.toFSharp (alias, returns)
+            let result =
+                "delegate of " +
+                argStrings +
+                " -> " + returnString
+            result, (dependencies @ argsDeps @ returnsDeps)
         | FunctionPrototype _ when isStruct ->
-            "nativeint"
-        | _else -> sprintf $"{__LINE__}: %A{_else}"
+            "nativeint", []
+        | _else -> sprintf $"{__LINE__}: %A{_else}", []
     static member toFSharpExtern t : string =
         match t with
         | TypeName name ->

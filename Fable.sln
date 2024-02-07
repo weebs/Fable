@@ -68,6 +68,8 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fone.Cli", "Fone.Cli\Fone.C
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fable.Tests.C", "tests\C\Fable.Tests.C\Fable.Tests.C.fsproj", "{5EC00B7F-47C5-4F38-8E8D-1C449135B4F0}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "clang-ast-parser", "clang-ast-parser-main\clang-ast-parser.fsproj", "{6520FE53-CC5E-472B-B230-6F5BED2FB265}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -178,6 +180,10 @@ Global
 		{5EC00B7F-47C5-4F38-8E8D-1C449135B4F0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5EC00B7F-47C5-4F38-8E8D-1C449135B4F0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5EC00B7F-47C5-4F38-8E8D-1C449135B4F0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6520FE53-CC5E-472B-B230-6F5BED2FB265}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6520FE53-CC5E-472B-B230-6F5BED2FB265}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6520FE53-CC5E-472B-B230-6F5BED2FB265}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6520FE53-CC5E-472B-B230-6F5BED2FB265}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
