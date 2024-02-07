@@ -547,7 +547,7 @@ type Type() =
                 + ([1..n] |> List.map (fun _ -> ">") |> String.concat "")
                 |> function
                 | "unsigned __int128" -> "unsigned__int128"
-                | "nativeptr<char>" when not isStruct -> "string"
+                // | "nativeptr<char>" when not isStruct -> "string"
                 // | "nativeptr<char>" when isStruct -> "string"
                 | "nativeptr<unit>" -> "nativeint"
                 | "nativeptr<nativeptr<unit>>" -> "nativeptr<nativeint>"

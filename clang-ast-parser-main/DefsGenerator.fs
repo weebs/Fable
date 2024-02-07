@@ -8,7 +8,8 @@ let writeStruct isFable (typeDefs: Map<string, string>) name (fields: (string * 
             typeDefs["struct " + name]
         else
             name
-    let fields =
+    let mutable safeInit = false
+    let fieldsText =
         if fields.Length = 0 then "struct end"
         else
             let fields =
@@ -20,7 +21,8 @@ let writeStruct isFable (typeDefs: Map<string, string>) name (fields: (string * 
                         | TypeName s when typeDefs.ContainsKey s ->
                             let def = typeDefs[s]
                             if def.StartsWith "delegate " then
-                                $"nativeint (* {def} *)", []
+                                safeInit <- true
+                                $"nativeint (* {s}: {def} *)", []
                             else
                                 Type.toFSharp (name, true, typ)
                         | _ ->
@@ -31,7 +33,45 @@ let writeStruct isFable (typeDefs: Map<string, string>) name (fields: (string * 
                 // String.concat "\n    " (fields |> Array.map (fun (name, typ) ->
                 // $"{Type.fsharpName name}: {Type.toFSharp (true, typ)}"))
             "{\n    " + fields + "\n}"
-    $"""type{if isFable then " [<EmitType(\"" + name + "\")>]" else ""} [<Struct>] {name} = {fields}"""
+    let safeInitDef =
+        if not safeInit then ""
+        else
+            let safeInitFields =
+                [|
+                    for (name, t) in fields do
+                        match t with
+                        | TypeName s when typeDefs.ContainsKey s ->
+                            $"{name}: {s}"
+                        | _ ->
+                            $"{name}: {fst (Type.toFSharp (name, true, t))}"
+                |]
+                |> String.concat "\n    "
+            $"type {name}_SafeInit = {{
+    {safeInitFields}
+}}\n"
+    let safeInit =
+        if not safeInit then ""
+        else
+            let initFields =
+                [|
+                    for (name, t) in fields do
+                        match t with
+                        | TypeName s when typeDefs.ContainsKey s ->
+                            let def = typeDefs[s]
+                            if def.StartsWith "delegate " then
+                                // $"{name} = System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(init.{name})"
+                                $"{name} = Marshal.GetFunctionPointerForDelegate(init.{name})"
+                            else
+                                $"{name} = init.{name}"
+                        | _ -> $"{name} = init.{name}"
+                |]
+                |> String.concat "\n            "
+            $" with
+    static member Init (init: {name}_SafeInit) : {name} =
+        {{
+            {initFields}
+        }}"
+    $"""{safeInitDef}type{if isFable then " [<EmitType(\"" + name + "\")>]" else ""} [<Struct>] {name} = {fieldsText}{safeInit}"""
 
 let writeFunction moduleName isFable name returnType (args: (string * _)[]) : string =
     if isFable then
