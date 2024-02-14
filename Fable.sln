@@ -70,6 +70,8 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fable.Tests.C", "tests\C\Fa
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "clang-ast-parser", "clang-ast-parser-main\clang-ast-parser.fsproj", "{6520FE53-CC5E-472B-B230-6F5BED2FB265}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fone.Interp", "Fone.Interp\Fone.Interp.fsproj", "{EA34E675-2C36-4C00-A83E-92403986807A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -184,6 +186,10 @@ Global
 		{6520FE53-CC5E-472B-B230-6F5BED2FB265}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6520FE53-CC5E-472B-B230-6F5BED2FB265}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6520FE53-CC5E-472B-B230-6F5BED2FB265}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EA34E675-2C36-4C00-A83E-92403986807A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EA34E675-2C36-4C00-A83E-92403986807A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EA34E675-2C36-4C00-A83E-92403986807A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EA34E675-2C36-4C00-A83E-92403986807A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
