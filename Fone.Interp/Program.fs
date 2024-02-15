@@ -2,194 +2,29 @@
 open System.Xml.Schema
 open FParsec
 open FParsec.CharParsers
-// let treeify (lines: (PrefixWhitespace * Token list) list) =
-//     // let rec getChildren indent lines =
-//     //     match lines with
-//     //     | [] -> []
-//     //     | (ws, value)::rest ->
-//
-//     let rec loop indent acc lines =
-//         match lines with
-//         | [] -> acc, []
-//         | (ws, value: Token list)::rest ->
-//             if ws.spaces > indent then
-//                 let children, remaining = loop ws.spaces [] rest
-//                 // acc @ (value :: children), remaining
-//                 // acc @ (value :: children), remaining
-//                 // acc @ [ Token.List [ yield! value; Token.List children ] ], remaining
-//                 acc @ [ Token.List (value @ children)], remaining
-//             elif ws.spaces < indent then
-//                 acc, lines
-//             else
-//                 let children, remaining = loop ws.spaces [] rest
-//                 let acc = acc @ [ yield! value; Token.List children ]
-//                 loop indent acc remaining
-//                 // value @ children, remaining
-//                 // [], []
-//                 // loop indent (acc @ value) rest
-//                 // acc, lines
-//     loop 0 [] lines
-//     // let rec loop acc lines =
-//         // match lines with
-//         // | [] -> acc
-//         // | _ ->
-//         //     lines |> List.takeWhile (fun (indent, _) -> indent.)
-// let rec collectExpressions2 (indent: int) (lines: (PrefixWhitespace * Token list) list) =
-//     let rec getSubExpressions indent lines =
-//         match lines with
-//         | [] -> [], []
-//         | (whitespace, tokens)::moreLines ->
-//             if whitespace.spaces = indent then [], lines
-//             elif whitespace.spaces < indent then [], lines
-//             else
-//                 let subExpressions, remainingLines = getSubExpressions whitespace.spaces moreLines
-//                 let result = tokens @ [ Token.List subExpressions ]
-//                 match remainingLines with
-//                 | [] -> result, []
-//                 | _ ->
-//                     let asdf, asdf2 = getSubExpressions indent remainingLines
-//                     result @ asdf, asdf2
-//                 // tokens @ [ Token.List subExpressions ], remainingLines
-//     /// Returns a list of sub expressions and then the remaining lines
-//     let rec loop indent (acc: Token list) (lines: (PrefixWhitespace * Token list) list) : (_ list * _ list) =
-//         match lines with
-//         | [] -> acc, []
-//         | asdf::moreLines ->
-//             let (whitespace, tokens) = asdf
-//             if whitespace.spaces = indent then
-//                 // let subTokens, remainingLines = collectExpressions indent moreLines
-//
-//                 // todo
-//                 // let subTokens, remainingLines = loop indent acc moreLines
-//                 // let subTokens, remainingLines = loop indent [] moreLines
-//
-//                 // let acc = acc @ [ Token.List (tokens @ subTokens) ]
-//                 // loop indent acc remainingLines
-//                 // loop indent (acc @ [ yield! tokens; ])
-//
-//                 // todo
-//                 // let foo = loop indent [ Token.List subTokens ] remainingLines
-//                 // acc @ [ yield! tokens; Token.List subTokens ], remainingLines
-//
-//                 // Token.List tokens :: more, []
-//                 // [], []
-//
-//                 let subExpressions, remainingLines = getSubExpressions indent moreLines
-//                 let acc = acc @ [ Token.List (tokens @ subExpressions) ]
-//                 loop indent acc remainingLines
-//             elif whitespace.spaces > indent then
-//                 // let subTokens, remainingLines = loop whitespace.spaces tokens moreLines
-//                 // let result = acc @ [ Token.List (tokens @ subTokens) ]
-//                 // let acc = tokens
-//                 // (tokens @ subTokens), remainingLines
-//                 let subTokens, remainingLines = loop whitespace.spaces tokens moreLines
-//                 acc @ [ Token.List subTokens ], remainingLines
-//                 // loop whitespace.spaces (acc @ tokens) moreLines
-//                 // Token.List (tokens @ subTokens), moreLines
-//             elif whitespace.spaces < indent then
-//                 // let subExpressions = loop
-//                 acc, lines
-//                 // loop (acc @ [ Token.List tokens ])
-//                 // [], []
-//             else
-//                 [], []
-//     loop indent [] lines
-// let rec collectExpressions (indent: int) (lines: (PrefixWhitespace * Token list) list) =
-//     let rec loop (indent: int) acc lines : Token list * (PrefixWhitespace * Token list) list =
-//         printfn "\n\n"
-//         printfn $"Loop: Indent {indent}"
-//         printfn $"%A{acc}"
-//         // printfn $"%A{lines}"
-//         match lines with
-//         | [] -> acc, []
-//         | (whitespace, tokens)::moreLines ->
-//             printfn "%A" tokens
-//             if whitespace.spaces = indent then
-//                 printfn $"whitespace.spaces {whitespace.spaces} = indent {indent}"
-//                 let rec innerLoop acc moreLines =
-//                     match moreLines with
-//                     | [] -> acc
-//                     | _ ->
-//                         let subExpressions, moreLines = loop whitespace.spaces [] moreLines
-//                         innerLoop (acc @ subExpressions) moreLines
-//                         // subExpressions, innerLoop
-//                 let subExpressions = innerLoop [] moreLines
-//                 // let subExpressions, moreLines = loop whitespace.spaces [] moreLines
-//                 let result = (tokens @ subExpressions)
-//                 // (acc @ [ Token.List result ]), moreLines
-//                 (acc @ [ Token.List result ]), []
-//                 // match moreLines with
-//                 // | [] ->
-//                 //     (acc @ [ Token.List result ]), moreLines
-//                 // | _ ->
-//                 //     // let more, moreLines2 = loop indent subExpressions moreLines
-//                 //     let more = collectExpressions indent moreLines
-//                 //     (acc @ [ Token.List result ] @ [ Token.List more ]), []
-//                     // (acc @ [ result ] @)
-//                 // let result = [ yield! tokens; Token.List subExpressions ]
-//                 // (acc @ result), moreLines
-//             elif whitespace.spaces < indent then
-//                 printfn $"whitespace.spaces {whitespace.spaces} < indent {indent}"
-//                 acc, lines
-//             elif whitespace.spaces > indent then
-//                 printfn $"whitespace.spaces {whitespace.spaces} > indent {indent}"
-//                 // let subExpressions, moreLines = loop whitespace.spaces [] moreLines
-//                 // let result = Token.List (tokens @ subExpressions)
-//                 // let origResult = (acc @ [ result ]), moreLines
-//                 // let moreResults, moreLines = loop indent [] moreLines
-//                 let foo = collectExpressions indent moreLines
-//                 let newResult = acc @ [ Token.List tokens ] @ [ Token.List foo ]
-//                 newResult, []
-//                 // let result = ()
-//             else
-//                 failwith "Shouldn't happen"
-//         | _ -> Unchecked.defaultof<_>
-//         |> fun result ->
-//             result
-//
-//             // if whitespace.spaces > indent then
-//             //     loop whitespace.spaces [] moreLines
-//             // elif whitespace.spaces = indent then
-//             //     (acc @ [ tokens ]), loop whitespace.spaces [] moreLines
-//             // elif whitespace.spaces < indent then
-//             //     acc,
-//     let result, remainingLines = loop indent [] lines
-//     match remainingLines with
-//     | [] -> result
-//     | _ -> result @ collectExpressions indent remainingLines
-//
-// let exprs =
-//     List [
-//         Ident "let"; Ident "foo"; Ident "x"; Ident "y"; List [
-//             Ident "let"; Ident "n"; List [
-//                 Ident "x"; Ident "+"; Ident "y"
-//             ]
-//             List [ Ident "n"; Ident "+"; Ident "x"; Ident "+"; Ident "y" ]
-//             List [ Ident "foo"; List [ Ident "foo"; Ident "x"; List [ Ident "y" ] ] ]
-//         ]
-//     ]
-let takes3 x y z : int = x + y + z
-let print n =
-    // printfn $"{n}"
-    ()
-do
-    // print
-    //     takes3 1 2 3 // error
-    print
-        (takes3 1 2 3) // fine
-    let n =
-        takes3
-            1
-            2 3 // fine
-    let n2 =
-        takes3 1
-            2 3
-    print n
-    let f =
-        takes3 1
-          2
-        3
-    print f
+let x , y = 1 , 2
+// let takes3 x y z : int = x + y + z
+// let print n =
+//     // printfn $"{n}"
+//     ()
+// do
+//     // print
+//     //     takes3 1 2 3 // error
+//     print
+//         (takes3 1 2 3) // fine
+//     let n =
+//         takes3
+//             1
+//             2 3 // fine
+//     let n2 =
+//         takes3 1
+//             2 3
+//     print n
+//     let f =
+//         takes3 1
+//           2
+//         3
+//     print f
 type PrefixWhitespace = { tabs: int; spaces: int }
 type Token =
     | Identifier of string
@@ -198,6 +33,7 @@ type Token =
     | Number of string
     | List of Token list
     | Line of Token list
+    | Null
     | Sequence of Token list
     | Comment of string
     | Array of Token list
@@ -215,17 +51,13 @@ let getWhitespace =
         // Whitespace (tabs, spaces)
 let expr, exprRef = createParserForwardedToRef ()
 let ident =
-    (pchar ':' |>> string) <|>
-    many1Chars (noneOf (List.map char [ "["; "]"; "("; ")"; ":"; " "; "\t"; "\n"; "\r"; ]))
+    pstring ".." <|> pstring "::" <|> pstring ":" <|>
+    many1Chars (noneOf (" " + ";:" + "{}[]()" + "\\\t\r\n"))
+    // many1Chars (noneOf (List.map char [ "{"; "}"; ";"; "["; "]"; "("; ")"; ":"; " "; "\t"; "\n"; "\r"; ]))
     // many1 (noneOf (List.map char [ " "; "\t"; "\n"; "\r"; ]))
     .>> getWhitespace
     |>> fun id ->
-        // Identifier (String.concat "" (List.map string id))
         Identifier id
-// let annotatedParameter =
-//     pchar '(' >>. ident .>> getWhitespace .>> pchar ':' .>> getWhitespace .>>. ident .>> getWhitespace .>> pchar ')' .>> getWhitespace
-//     |>> fun id ->
-//         AnnotatedIdentifier id
 let number =
     numberLiteral NumberLiteralOptions.None ""
     |>> fun literal ->
@@ -234,15 +66,25 @@ let list =
     pchar '(' >>. many1 expr .>> pchar ')'
     |>> Token.List
 let array =
-    pchar '[' .>> getWhitespace >>.
-    many1 (expr .>> (optional (pchar ';')) .>> getWhitespace) .>>
-    getWhitespace .>> pchar ']' .>>
-    getWhitespace
-    |>> Array
-    // pchar '(' >>. manyChars (noneOf ")") .>> pchar ')'
-    // |>> Token.Identifier
-// let expr =
-//     ident
+    // pchar '[' .>> getWhitespace >>.
+    // many1 (expr .>> (optional (pchar ';')) .>> getWhitespace) .>>
+    // getWhitespace .>> pchar ']' .>>
+    // getWhitespace
+    // |>> Array
+    parse {
+        do! pchar '[' .>> getWhitespace |>> ignore
+        let! inner = many1 (expr .>> (optional (pchar ';')) .>> getWhitespace)
+        do! getWhitespace .>> pchar ']' .>> getWhitespace |>> ignore
+        return (Array inner)
+    }
+let seq =
+    pchar '{' .>> getWhitespace >>.
+    optional (newline .>> getWhitespace) >>.
+    many1 (
+        expr .>> optional (pchar ';') .>> optional newline .>> getWhitespace
+    ) .>>
+    getWhitespace .>> pchar '}' .>> getWhitespace
+    |>> Sequence
 let newlineOrEof =
     ((newline |>> ignore) <|> eof) // .>> skipRestOfLine true
     // >>% []
@@ -265,14 +107,11 @@ let manyExprs =
         result
 do
     exprRef.Value <-
-        // (attempt list) <|> ident
-        emptyList <|> comment <|> array <|> list <|> number <|> ident
+        emptyList <|> seq <|> comment <|> array <|> list <|> number <|> ident
 let line =
-    // getWhitespace .>>. many expr .>> ((newline |>> ignore) <|> eof)
     getWhitespace .>>. (
         newlineOrEof
         <|> manyExprs
-        // (attempt (many expr)) <|> (newline |>> fun _ -> [])
     )
 type UncheckedExpr =
     | Ident of string
@@ -288,7 +127,7 @@ type SourceExpression =
             // let flattened = nodes |> List.map _.Flatten |> List.map Token.List
             let flattened = nodes |> List.map _.Flatten
             // root @ flattened
-            Token.List (root @ flattened)
+            Token.Line (root @ flattened)
 
 
 let getSubExpressions (indent: int) (lines: (PrefixWhitespace * Token list) list) =
@@ -321,6 +160,64 @@ let rec tree (indent: int) (lines: (PrefixWhitespace * Token list) list) =
                 )
                 [ result ] @ tree indent remaining
                 // [ Tree (tokens, subExpressions |> List.map (snd >> Leaf)) ] @ tree indent remaining
+let fn =
+    for i
+     in 1..10
+     do
+        printfn ""
+        printfn ""
+    fun
+     ()
+      ->
+          ()
+// let f2 = fun ()
+//   ->
+//     printfn n
+let lambdas = """
+let main () =
+    let n = string 0
+    let printfn (s: string) = System.Console.WriteLine s
+    let f = fun () ->
+        printfn n
+    let f2 = fun ()
+        ->
+            printfn n
+    0
+    let f2 =
+        fun () ->
+            printfn n
+    0
+"""
+let normalCode = """
+type SourceRange a = {
+    start: int; end: int;
+    data: a
+}
+let add x y = x + y
+let mul x y =
+    x * y
+let main () =
+    let n = add 2 3
+    let values = [ 1; 2; 3; 4; ]
+    let n2 =
+        mul 4 20
+    let f = fun () ->
+        printfn n
+    let f2 = fun ()
+        ->
+            printfn n
+    0
+    let f2 =
+        fun () ->
+            printfn n
+    0
+    for i
+     in 1..10
+     do
+        printfn i
+        printfn i
+    420
+"""
 let source = """
 let foo (x: int) y =
   let asdf () =
@@ -355,17 +252,21 @@ let foo (x: int) y =
      y z
      """
 type ArgInfo =
-    { Name: string; Type: string option }
+    { Name: string; TypeConstraint: string option }
 let parseArg (token: Token) =
     match token with
     | Token.List (Identifier name :: Identifier ":" :: [ Identifier typeName ]) ->
-        { Name = name; Type = Some typeName }
+        { Name = name; TypeConstraint = Some typeName }
+    | Token.List [ Identifier name ] ->
+        { Name = name; TypeConstraint = None }
     | Identifier name ->
-        { Name = name; Type = None }
+        { Name = name; TypeConstraint = None }
     | Token.List [] ->
-        { Name = "unit"; Type = Some "unit" }
+        { Name = "()"; TypeConstraint = Some "unit" }
     // | _ -> { Name = ""; Type = None }
 module rec Parse =
+    let inline (*) (s: string) (n: int) =
+        [| for i in 1..n do yield s |] |> String.concat ""
     type Expression =
         | Let of ArgInfo * Expression
         | Call of callee: Expression * args: Expression list
@@ -373,39 +274,225 @@ module rec Parse =
         | Throw of Token
         | Sequence of Expression list
         | Number of string
+        | ForLoop of bindings: Expression list * range: Expression * body: Expression
         | Ignore
+        | UnitConstant
         | ArrayLiteral of Expression list
         | Lambda of arg: ArgInfo * body: Expression
         | Assign of dest: Expression * value: Expression
         | NonCurriedLambda of args: ArgInfo list * body: Expression
+        | RecordInfo of fields: (Expression * Expression) list
+        member this.AsText (depth: int) =
+            match this with
+            | Call(callee, args) ->
+                let callee, args =
+                    match callee with
+                    | Ident "+"
+                    | Ident "-"
+                    | Ident "*"
+                    | Ident ".." -> List.head args, callee :: List.tail args
+                    | _ -> callee, args
+                let argsText =
+                    args
+                    |> List.map (fun arg -> arg.AsText 0)
+                    // |> String.concat (" " * 4)
+                    |> String.concat " "
+                $"{callee.AsText depth} {argsText}"
+            | Ident s -> s
+            | Throw token -> failwith "todo"
+            | Sequence expressions ->
+                expressions
+                |> List.map (fun expr -> expr.AsText 0)
+                |> String.concat ("\n" + (" " * (depth + depth + depth + depth)))
+            | Number s -> s
+            | ForLoop(bindings, range, body) ->
+                let bindingsText =
+                    bindings
+                    |> List.map (fun binding -> binding.AsText depth)
+                    |> String.concat ", "
+                $"for {bindingsText} in {range.AsText depth} do\n{body.AsText (depth + 1)}"
+            | Ignore -> failwith "todo"
+            | UnitConstant -> "()"
+            | ArrayLiteral expressions ->
+                let expressionsText =
+                    expressions |> List.map (fun expr -> expr.AsText depth) |> String.concat "; "
+                $"[| {expressionsText} |]"
+            | Lambda(arg, body) -> failwith "todo"
+            | Assign(dest, value) ->
+                $"{dest.AsText} <- {value.AsText}"
+            // | NonCurriedLambda(args, body) -> failwith "todo"
+            | RecordInfo fields ->
+                let fieldsText =
+                    fields
+                    |> List.map (fun (name, t) -> $"{name.AsText 0}: {t.AsText 0}")
+                    |> String.concat "; "
+                $"{{ {fieldsText} }}"
+            | Let (info, expr) ->
+                match expr with
+                | Sequence items ->
+                    // $"let {info.Name} =\n{expr.AsText (depth + 1)}"
+                    $"let {info.Name} =\n{expr.AsText 1}"
+                | _ ->
+                    $"let {info.Name} = {expr.AsText 0}"
+
+            | NonCurriedLambda (args, expr) ->
+                let argsText =
+                    args
+                    |> List.map (fun arg ->
+                        match arg.TypeConstraint with
+                        | Some t -> $"({arg.Name} : {t})"
+                        | None -> arg.Name
+                    )
+                    |> String.concat " "
+                $"fun {argsText} ->\n{expr.AsText 1}"
+            |> fun s ->
+                let ws = " " * (depth + depth + depth + depth)
+                ws + s
+                // s.Replace ("{WS}", "    ")
+            // | _ ->
+            //     ""
     let parseCallArgs callee (args: Token list) =
         // let f arg =
         //     match arg with
         //     | Line
         args |> List.map parseExpression
+    module Data =
+        let takeToken token =
+            match token with
+            | Token.Line (start::tail) ->
+                match start with
+                | Token.Line rest ->
+                    let next, more = takeToken start
+                    // next, Token.Line (tail @ [ more ])
+                    next, Token.Line (more :: tail)
+                | _ ->
+                    match tail with
+                    | [ Token.Line rest ] ->
+                        start, Token.Line rest
+                    | [ token ] ->
+                        start, token
+                    | _ ->
+                        start, Token.Line tail
+            | _ -> token, Token.Null
+            // match token with
+            // | Token.Line (start::tail) ->
+            //     match start with
+            //     | Token.Line rest ->
+            //         let next, more = takeToken start
+            //         // next, Token.Line (tail @ [ more ])
+            //         next, (more @ tail) // Token.Line (more :: tail)
+            //     | _ ->
+            //         match tail with
+            //         | [ Token.Line rest ] ->
+            //             start, rest //Token.Line rest
+            //         | [ token ] ->
+            //             start, [] // token
+            //         | _ ->
+            //             start, tail // Token.Line tail
+            // | _ -> token, [] // Token.Null
+
+        let takeWhileNot t token =
+            let rec loop acc token =
+                match takeToken token with
+                | value, rest when value = t ->
+                    // acc, [ token ]
+                    acc @ [ token ], rest
+                | value, Token.Null when value <> t ->
+                // | value, [] when value <> t ->
+                    failwith "ope"
+                | token, rest ->
+                    // let a, b = loop (acc @ [ token ]) (List.head rest)
+                    // a, b @ List.tail rest
+                    loop (acc @ [ token ]) rest
+            loop [] token
+        let skipToken token =
+            takeToken token |> snd
+
+        // let takeTokenUntil t token =
+        //     match token with
+        //     | Token.Line tokens ->
+        //         let tokens = [
+        //             for token in tokens do
+        //                 match token with
+        //                 | Token.Line moreTokens ->
+        //                     let result = takeTokenUntil t moreTokens
+        //
+        //                 | _ ->
+        //                     if token <> t then
+        //                         yield token
+        //                 if t = token then
+        //         ]
     let parseExpression (token: Token) =
         match token with
         | Token.Line (Token.Identifier "let" :: rest)
         | Token.List (Token.Identifier "let" :: rest) ->
             parseLet (Token.Identifier "let" :: rest)
-
+        | Token.List (Token.Identifier "for" :: rest)
+        | Token.Line (Token.Identifier "for" :: rest) ->
+            let bindings, rest = rest |> Token.Line |> Data.takeWhileNot (Identifier "in")
+            // let rest = rest |> Data.skipToken
+            let rest = rest |> Data.skipToken
+            // let rest = rest |> List.skip 1
+            // let range, rest = rest |> Data.takeWhileNot (Identifier "do")
+            let range, rest = rest |> Data.takeWhileNot (Identifier "do")
+            let rest = rest |> Data.skipToken
+            ForLoop (bindings |> List.map parseExpression, parseExpression (Token.List range), parseExpression rest)
+        | Token.List (Token.Identifier "type" :: Token.Identifier name :: rest)
+        | Token.Line (Token.Identifier "type" :: Token.Identifier name :: rest) ->
+            let typeArgs, rest = rest |> Token.Line |> Data.takeWhileNot (Identifier "=")
+            let rest = rest |> Data.skipToken
+            match rest with
+            | Token.Sequence fieldTokens ->
+                let parseField (field: Token list) =
+                    field[0] |> parseExpression, field[2] |> parseExpression
+                let fieldTokens =
+                    fieldTokens
+                    |> List.chunkBySize 3
+                    |> List.map parseField
+                Let (
+                    { Name = name; TypeConstraint = Some "Type" },
+                    if typeArgs.Length = 0 then
+                        RecordInfo fieldTokens
+                    else
+                        NonCurriedLambda (typeArgs |> List.map parseArg, RecordInfo fieldTokens)
+                )
+            | _ ->
+                failwith "type declaration value must be a sequence of \"ident : type \" items"
         | Token.List (Token.Identifier "fun" :: rest)
         | Token.Line (Token.Identifier "fun" :: rest) ->
-            let args =
-                rest
-                |> List.takeWhile (fun t -> t <> Identifier "->")
-                |> List.map parseArg
+            let args, rest =
+                let args, rest =
+                    rest
+                    |> Token.Line
+                    |> Data.takeWhileNot (Identifier "->")
+                args
+                |> List.map parseArg, rest
+                // |> List.takeWhile (fun t -> t <> Identifier "->")
+                // |> List.map parseArg
             let lambdaBody =
                 rest
-                |> List.skip (args.Length + 1)
-                |> parseLetValue
+                // |> (function Token.Line rest -> rest)
+                |> Data.skipToken
+                |> parseExpression
+                // |> List.skip 1
+                // |> List.skip (args.Length + 1)
+                // |> parseLetValue
             NonCurriedLambda (args, lambdaBody)
+        | Token.List (Token.Line callee::args)
+        | Token.Line (Token.Line callee::args) ->
+            let asdf = Data.takeToken (Token.Line callee)
+            let asdf2 = Data.skipToken (Token.Line callee)
+            let asdf22 = Data.takeToken token
+            let asdf222 = Data.skipToken token
+            parseExpression (Token.Line (callee @ args))
         | Token.List (callee::args)
         | Token.Line (callee::args) ->
-            let binaryOps = "+-/*^"
+            let binaryOps = [ "+-/*^"; ".." ]
             match args with
             | Identifier op :: otherArgs
-                    when op.Length = 1 && binaryOps.Contains op ->
+                    when
+                        (op.Length = 1 && binaryOps[0].Contains op) ||
+                        (List.tail binaryOps |> List.exists (fun s -> s.Contains op)) ->
                 // todo: do the conversion on all args
                 Call (parseExpression (Identifier op), List.map parseExpression (callee::otherArgs))
             | Identifier "<-" :: rest ->
@@ -414,12 +501,14 @@ module rec Parse =
             | _ ->
                 let callee = parseExpression callee
                 let args = parseCallArgs callee args
-                Call (callee, args)
+                match callee with
+                | Ignore -> Ignore
+                | _ -> Call (callee, args)
         | Identifier name -> Ident name
         | Line [] | Token.List [] ->
-            Ignore
+            UnitConstant
         | Token.Number s -> Number s
-        | Comment s -> Ignore
+        | Comment _ -> Ignore
         | Array values -> ArrayLiteral (values |> List.map parseExpression)
         | _ ->
             Throw token
@@ -434,37 +523,76 @@ module rec Parse =
         | (Identifier "let")::(Identifier name)::rest ->
             match rest with
             | Identifier ":" :: Identifier argType :: Identifier "=" :: value ->
-                Let ({ Name = name; Type = None }, parseLetValue value)
+                Let (
+                    { Name = name; TypeConstraint = Some argType },
+                    parseLetValue value
+                )
             | Identifier "=" :: value ->
-                Let ({ Name = name; Type = None }, parseLetValue value)
+                // Let ({ Name = name; Type = None }, parseLetValue value)
+                Let (
+                    { Name = name; TypeConstraint = None },
+                    parseExpression (Token.List value)
+                )
             | _ ->
                 // todo: parse each arg
                 let args =
                     rest
                     |> List.takeWhile (fun t -> t <> Identifier "=")
                     |> List.map parseArg
-                let value =
-                    rest
-                    |> List.skip (args.Length + 1)
-                    |> parseLetValue
-                Let ({ Name = name; Type = None },
-                    NonCurriedLambda (args, value)
+                let value = rest |> List.skip (args.Length + 1)
+                let letValue =
+                    match value with
+                    | Token.List foo :: rest
+                    | Token.Line foo :: rest ->
+                        value |> parseLetValue
+                    | _ ->
+                        parseLetValue [ Token.Line value ]
+                Let (
+                    { Name = name; TypeConstraint = None },
+                    NonCurriedLambda (args, letValue)
                 )
 
         | _ ->
             Throw (Token.List tokens)
 
-match run (manyTill line eof) source2 with
+match run (manyTill line eof) normalCode with
+// match run (manyTill line eof) normalCode with
 | Success(o, unit, position) ->
-    let asdf = getSubExpressions 0 o
-    let asdf2 = tree 0 o
+    let filteredExpressions =
+        o
+        |> List.filter (fun (_, items) -> items.Length <> 0)
+        |> List.map (fun (ws, items) ->
+            ws, items |> List.filter (function Comment _ -> false | _ -> true)
+        )
+    // let asdf =
+        // getSubExpressions 0 filteredExpressions
+    let asdf2 =
+        tree 0 filteredExpressions
     let exprList = asdf2 |> List.map _.Flatten
-    match exprList[1] with
-    | Token.List exprs
-    | Token.Line exprs ->
-        Parse.parseLet exprs
-        |> printfn "%A"
-    | _ -> ()
+    printfn "%A" exprList
+    // match exprList[0] with
+    let result =
+        exprList
+        |> List.map (fun expr ->
+            // match expr with
+            // | Token.List exprs ->
+            //     Parse.parseExpression (Token.Line exprs)
+            //     |> printfn "%A"
+            // | Token.Line exprs ->
+            //     // Parse.parseLet exprs
+            //     Parse.parseExpression (Token.Line exprs)
+            //     |> printfn "%A"
+            // | _ -> ()
+            expr
+            |> Parse.parseExpression
+            |> fun expr ->
+                printfn "%A" expr
+                expr
+        )
+    let output =
+        result
+        |> List.map (fun expr -> expr.AsText 0)
+        |> List.iter (printfn "%s")
     // let result1 = treeify o
     // let result = collectExpressions2 0 o
     // let asdf = collectExpressions exprs
