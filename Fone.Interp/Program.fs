@@ -302,7 +302,9 @@ module rec Parse =
             | Throw token -> failwith "todo"
             | Sequence expressions ->
                 expressions
+                // |> List.map (fun expr -> expr.AsText 0)
                 |> List.map (fun expr -> expr.AsText 0)
+                // |> String.concat "\n"
                 |> String.concat ("\n" + (" " * (depth + depth + depth + depth)))
             | Number s -> s
             | ForLoop(bindings, range, body) ->
@@ -358,52 +360,56 @@ module rec Parse =
         args |> List.map parseExpression
     module Data =
         let takeToken token =
-            match token with
-            | Token.Line (start::tail) ->
-                match start with
-                | Token.Line rest ->
-                    let next, more = takeToken start
-                    // next, Token.Line (tail @ [ more ])
-                    next, Token.Line (more :: tail)
-                | _ ->
-                    match tail with
-                    | [ Token.Line rest ] ->
-                        start, Token.Line rest
-                    | [ token ] ->
-                        start, token
-                    | _ ->
-                        start, Token.Line tail
-            | _ -> token, Token.Null
             // match token with
             // | Token.Line (start::tail) ->
             //     match start with
             //     | Token.Line rest ->
             //         let next, more = takeToken start
             //         // next, Token.Line (tail @ [ more ])
-            //         next, (more @ tail) // Token.Line (more :: tail)
+            //         next, Token.Line (more :: tail)
             //     | _ ->
             //         match tail with
             //         | [ Token.Line rest ] ->
-            //             start, rest //Token.Line rest
+            //             start, Token.Line rest
             //         | [ token ] ->
-            //             start, [] // token
+            //             start, token
             //         | _ ->
-            //             start, tail // Token.Line tail
-            // | _ -> token, [] // Token.Null
+            //             start, Token.Line tail
+            // | _ -> token, Token.Null
+            match token with
+            | Token.Line (start::tail) ->
+                match start with
+                | Token.Line rest ->
+                    let next, more = takeToken start
+                    // next, Token.Line (tail @ [ more ])
+                    next, (more @ tail) // Token.Line (more :: tail)
+                | _ ->
+                    match tail with
+                    | [ Token.Line rest ] ->
+                        start, rest //Token.Line rest
+                    | [ token ] ->
+                        start, [] // token
+                    | _ ->
+                        start, tail // Token.Line tail
+            | _ -> token, [] // Token.Null
 
         let takeWhileNot t token =
             let rec loop acc token =
                 match takeToken token with
                 | value, rest when value = t ->
-                    // acc, [ token ]
-                    acc @ [ token ], rest
-                | value, Token.Null when value <> t ->
-                // | value, [] when value <> t ->
+                    acc, [ token ]
+                    // acc @ [ token ], rest
+                // | value, Token.Null when value <> t ->
+                | Token.Line tokens, []
+                | Token.List tokens, [] ->
+                    // loop acc skipToken (Token.Line tokens)
+                    takeWhileNot t (Token.Line tokens)
+                | value, [] when value <> t ->
                     failwith "ope"
                 | token, rest ->
-                    // let a, b = loop (acc @ [ token ]) (List.head rest)
-                    // a, b @ List.tail rest
-                    loop (acc @ [ token ]) rest
+                    let a, b = loop (acc @ [ token ]) (Token.Line rest)
+                    a, b //@ List.tail rest
+                    // loop (acc @ [ token ]) rest
             loop [] token
         let skipToken token =
             takeToken token |> snd
@@ -431,18 +437,18 @@ module rec Parse =
         | Token.Line (Token.Identifier "for" :: rest) ->
             let bindings, rest = rest |> Token.Line |> Data.takeWhileNot (Identifier "in")
             // let rest = rest |> Data.skipToken
-            let rest = rest |> Data.skipToken
+            let rest = Token.Line rest |> Data.skipToken
             // let rest = rest |> List.skip 1
             // let range, rest = rest |> Data.takeWhileNot (Identifier "do")
-            let range, rest = rest |> Data.takeWhileNot (Identifier "do")
-            let rest = rest |> Data.skipToken
-            ForLoop (bindings |> List.map parseExpression, parseExpression (Token.List range), parseExpression rest)
+            let range, rest = Token.List rest |> Data.takeWhileNot (Identifier "do")
+            let rest = Token.Line rest |> Data.skipToken
+            ForLoop (bindings |> List.map parseExpression, parseExpression (Token.List range), rest |> List.map parseExpression |> Sequence)
         | Token.List (Token.Identifier "type" :: Token.Identifier name :: rest)
         | Token.Line (Token.Identifier "type" :: Token.Identifier name :: rest) ->
             let typeArgs, rest = rest |> Token.Line |> Data.takeWhileNot (Identifier "=")
-            let rest = rest |> Data.skipToken
+            let rest = Token.Line rest |> Data.skipToken
             match rest with
-            | Token.Sequence fieldTokens ->
+            | [ Token.Sequence fieldTokens ] ->
                 let parseField (field: Token list) =
                     field[0] |> parseExpression, field[2] |> parseExpression
                 let fieldTokens =
@@ -456,6 +462,7 @@ module rec Parse =
                     else
                         NonCurriedLambda (typeArgs |> List.map parseArg, RecordInfo fieldTokens)
                 )
+            | [] -> RecordInfo []
             | _ ->
                 failwith "type declaration value must be a sequence of \"ident : type \" items"
         | Token.List (Token.Identifier "fun" :: rest)
@@ -472,8 +479,11 @@ module rec Parse =
             let lambdaBody =
                 rest
                 // |> (function Token.Line rest -> rest)
+                |> Token.Line
                 |> Data.skipToken
+                |> Token.Line
                 |> parseExpression
+                // |> Sequence
                 // |> List.skip 1
                 // |> List.skip (args.Length + 1)
                 // |> parseLetValue
