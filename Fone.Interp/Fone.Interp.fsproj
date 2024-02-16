@@ -6,7 +6,13 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <Compile Include="../Fone.Cli/SourceBuilder.fs" />
+        <Compile Include="TokenParser.fs" />
+        <Compile Include="Sources.fs" />
+        <Compile Include="AST.fs" />
+        <Compile Include="Printer.fs" />
         <Compile Include="Program.fs"/>
+        <None Include="asdf.fsx" />
     </ItemGroup>
 
     <ItemGroup>
