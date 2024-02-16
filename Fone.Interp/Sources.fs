@@ -52,10 +52,10 @@ let main () =
     0
 """
 let normalCode = """
-type SourceRange a = {
-    start: int; end: int;
-    data: a
-}
+// type SourceRange a = {
+    // start: int; end: int;
+    // data: a
+// }
 let add x y = x + y
 let printfn value = System.Console.WriteLine (string value)
 let mul x y =
@@ -81,6 +81,8 @@ let main () =
         printfn i
         printfn i
     420
+
+main ()
 """
 let source = """
 let foo (x: int) y =
@@ -114,4 +116,6 @@ let foo (x: int) y =
   foo
     foo x
      y z
+    bar a b
+      c
      """

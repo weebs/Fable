@@ -76,7 +76,7 @@ type Expression with
             |> sb.AppendLine
         | Lambda(arg, body) -> failwith "todo"
         | Assign(dest, value) ->
-            $"{dest.AsText} <- {value.AsText}"
+            $"{dest.AsText 0} <- {value.AsText 0}"
             |> sb.Append
         // | NonCurriedLambda(args, body) -> failwith "todo"
         | RecordInfo fields ->
@@ -84,7 +84,7 @@ type Expression with
                 fields
                 |> List.map (fun (name, t) -> $"{name.AsText 0}: {t.AsText 0}")
                 |> String.concat "; "
-            $"{{ {fieldsText} }}"
+            $"struct {{ {fieldsText} }}"
             |> sb.Append
         | Let (info, expr) ->
             match expr with

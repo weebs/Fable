@@ -11,12 +11,14 @@
         <Compile Include="Sources.fs" />
         <Compile Include="AST.fs" />
         <Compile Include="Printer.fs" />
+        <Compile Include="Unit.Tests.fs" />
         <Compile Include="Program.fs"/>
         <None Include="asdf.fsx" />
     </ItemGroup>
 
     <ItemGroup>
       <PackageReference Include="FParsec" Version="2.0.0-beta2" />
+      <PackageReference Include="FSharp.Compiler.Service" Version="43.8.200" />
     </ItemGroup>
 
 </Project>
