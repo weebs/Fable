@@ -16,9 +16,9 @@ type Token =
     | Sequence of Token list
     | Comment of string
     | Array of Token list
-type Expr =
-    | Let of {| ident: string; value: Expr; body: Expr |}
-    | Call of {| callee: Expr; args: Expr list |}
+// type Expr =
+//     | Let of {| ident: string; value: Expr; body: Expr |}
+//     | Call of {| callee: Expr; args: Expr list |}
 // let ``let`` =
 //     pstring "let"
 let getWhitespace =

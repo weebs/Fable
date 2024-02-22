@@ -4,10 +4,13 @@ open System
 open System.IO
 open System.Text
 open FSharp.Compiler.Interactive.Shell
+open Fone.Interp.AST
+open Fone.Interp.AST.Typed
 open TokenParser
 open AST.Unchecked
 open Printer
 open FParsec
+open AST
 type ConsoleWriter(?callback: (char -> unit)) =
         inherit IO.TextWriter()
 
@@ -172,7 +175,6 @@ module rec Parse =
             loop [] token
         let skipToken token =
             takeToken token |> snd
-
         // let takeTokenUntil t token =
         //     match token with
         //     | Token.Line tokens ->
@@ -192,8 +194,8 @@ module rec Parse =
         | Token.List _ ->
             ()
         | Token.Line _ ->
-            printfn "%A" token
-            // ()
+            // printfn "%A" token
+            ()
         | _ -> ()
         let token =
             match token with
@@ -236,7 +238,10 @@ module rec Parse =
                     if typeArgs.Length = 0 then
                         RecordInfo fieldTokens
                     else
-                        NonCurriedLambda (typeArgs |> List.map parseArg, RecordInfo fieldTokens)
+                        let args =
+                            typeArgs |> List.map parseArg
+                            |> List.map (fun arg -> { arg with TypeConstraint = arg.TypeConstraint |> Option.defaultValue "Type" |> Some })
+                        NonCurriedLambda (args, RecordInfo fieldTokens)
                 )
             | [] -> RecordInfo []
             | _ ->
@@ -288,7 +293,7 @@ module rec Parse =
             parseExpression expr
         | Token.List (callee::args)
         | Token.Line (callee::args) ->
-            let binaryOps = [ "+-/*^"; ".." ]
+            let binaryOps = [ "+-/*^"; ".."; "|>"; "<|" ]
             match args with
             | Identifier op :: otherArgs
                     when
@@ -312,10 +317,10 @@ module rec Parse =
                 // | _ -> Call (callee, args)
         | Identifier name -> Ident name
         | Line [] | Token.List [] ->
-            UnitConstant
-        | Token.Number s -> Number s
+            Expr.UnitConstant
+        | Token.Number s -> Expr.Number s
         | Comment _ -> Ignore
-        | Array values -> ArrayLiteral (values |> List.map parseExpression)
+        | Token.Array values -> ArrayLiteral (values |> List.map parseExpression)
         | _ ->
             Throw token
     let parseLetValue (tokens: Token list) =
@@ -365,64 +370,296 @@ module rec Parse =
                     |> List.takeWhile (fun t -> t <> Identifier "=")
                     |> List.map parseArg
                 let value = rest |> List.skip (args.Length + 1)
-                let letValue =
+                // let letValue =
+                //     match value with
+                //     | Token.List foo :: rest
+                //     | Token.Line foo :: rest ->
+                //         value |> parseLetValue
+                //     | _ ->
+                //         // Since parseLetValue calls List.map parseExpression
+                //         // we need to wrap the value
+                //         parseLetValue [ Token.Line value ]
+                let value =
                     match value with
-                    | Token.List foo :: rest
-                    | Token.Line foo :: rest ->
-                        value |> parseLetValue
+                    | Token.Line _ :: _ ->
+                        value
                     | _ ->
-                        // Since parseLetValue calls List.map parseExpression
-                        // we need to wrap the value
-                        parseLetValue [ Token.Line value ]
+                        [ Token.Line value ]
                 Let (
                     { Name = name; TypeConstraint = None },
+                    // NonCurriedLambda (args, toLetValue (Token.Line value))
                     NonCurriedLambda (args, toLetValue value)
                 )
 
         | _ ->
             Throw (Token.List tokens)
+type TypedEnv = { constraints: Map<string, string option> }
+let usages name expr : obj list =
+    []
+let solve env name =
+    None
+let rec typeCheck env expr =
+    match expr with
+    | NonCurriedLambda (argNames, expression) ->
+        // Typed.Lambda (typeCheck { env with constraints = env.constraints.Add(argName, "Erased / *") } expression)
+        let env =
+            argNames
+            |> List.fold (fun env arg -> { env with constraints = env.constraints.Add(arg.Name, arg.TypeConstraint) }) env
+        let parameters = argNames |> List.map (fun arg -> solve env arg.Name |> Option.defaultValue (Defined ""))
+        let returnType = typeCheck env expression
+        Type.Lambda (parameters, returnType)
+    | RecordInfo fields ->
+        Type.Kind expr
+    | _ ->
+        Type.Dynamic
+    // Typed.Type.Defined
+let rec typeCheck_ (env: AST.Env) (expr: Expr) =
+    let failwith _ =
+        Typed.Error expr
+    match expr with
+    | Let(argInfo, expression) ->
+        let t =
+            match argInfo.TypeConstraint with
+            | Some t -> Type.Defined t
+            | _ -> typeCheck { constraints = Map.empty } expression
+        Typed.Let (argInfo.Name, typeCheck_ env expression)
+    | Call(callee, args) ->
+        Typed.Call (typeCheck_ env callee, args |> List.map (typeCheck_ env))
+    | Range(from, until) -> failwith "todo"
+    | Ident s -> Typed.Ident s
+    | Throw (Token.Sequence tokens) ->
+        match tokens with
+        | field :: Token.Identifier "=" :: value :: rest ->
+            // todo: Parse properly
+            // todo: List.tupleBySize n
+            tokens
+            |> List.chunkBySize 3
+            |> List.map (fun [ Token.Identifier field; _; value ] ->
+                field,
+                Parse.parseExpression value
+                |> typeCheck_ env
+            )
+            |> NewRecord
+        | _ ->
+            Unit
+    | Throw token ->
+        failwith "todo"
+    | Sequence expressions ->
+        Typed.Sequence (List.map (typeCheck_ env) expressions)
+    // | Expr.Number s -> Double.Parse s |> (int64 >> Num >> Value >> Typed.Constant)
+    | Expr.Number s -> Double.Parse s |> (int64 >> Number >> Constant)
+    | ForLoop(bindings, range, body) ->
+        failwith "todo"
+    | Ignore ->
+        failwith "todo"
+    | Expr.UnitConstant -> Expression.Unit
+    | ArrayLiteral expressions ->
+        Typed.Array (List.map (typeCheck_ env) expressions)
+    | Unchecked.Lambda(arg, body) ->
+        failwith "todo"
+    | Assign(dest, value) ->
+        failwith "todo"
+    | NonCurriedLambda(args, body) ->
+        let typedEnv =
+            args
+            |> List.fold (fun env arg -> { constraints = env.constraints.Add(arg.Name, None) }) { constraints = Map.empty }
+        let argTypes =
+            args
+            // |> List.map (_.Name >> solve typedEnv)
+            |> List.map _.TypeConstraint
+            |> List.map (Option.defaultValue "" >> Type.Defined)
+            // |> List.map (Option.defaultValue null)
+            // |> List.map Kind
+        let names = args |> List.map _.Name
+        // Typed.Lambda (argTypes |> List.zip names, typeCheck_ env body)
+        match args with
+        | [ arg ] ->
+            Typed.Lambda ((arg.Name, Type.Dynamic), typeCheck_ env body)
+        | arg::remainingArgs ->
+            let rest = NonCurriedLambda(remainingArgs, body)
+            Typed.Lambda ((arg.Name, Type.Dynamic), typeCheck_ env rest)
+    | RecordInfo fields ->
+        let fields = [
+            for (Ident name, t) in fields do
+                let result = typeCheck_ env t
+                match result with
+                | Expression.Ident n ->
+                    yield name, Expression.Ident ("@" + n)
+                | _ ->
+                    yield name, result
+        ]
+        MakeRecordConstructor fields
+let rec eval_ acc env expr =
+    let eval = eval_ (expr :: acc)
+    match expr with
+    | Typed.Add (a, b) ->
+        let _, a = eval env a
+        let _, b = eval env b
+        match a, b with
+        | Number a, Number b -> env, Number (a + b)
+        | Float a, Float b -> env, Float (a + b)
+        | String a, String b -> env, String (a + b)
+    | Typed.Mult (a, b) ->
+        let _, a = eval env a
+        let _, b = eval env b
+        match a, b with
+        | Number a, Number b -> env, Number (a * b)
+        | Float a, Float b -> env, Float (a * b)
+    | Typed.Let (name, value) ->
+        let _, result = eval env value
+        printfn $"let {name} = %A{result}"
+        { env with bindings = env.bindings.Add(name, result) }, RuntimeValue.UnitConstant
+    | Typed.Call(callee, [ args ]) ->
+        let _, fn = eval env callee
+        match fn with
+        | RuntimeValue.Lambda (lambdaEnv, argName, expr) ->
+            let value = eval env args
+            let lambdaEnv = lambdaEnv.Add(argName, snd value)
+            match expr with
+            | Expression.Lambda ((s, _), body) ->
+                env, RuntimeValue.Lambda (lambdaEnv, s, body)
+            | _ ->
+                let mutable local_env = env.bindings
+                for kv in lambdaEnv do
+                    local_env <- local_env.Add (kv.Key, kv.Value)
+                let _, result = eval { env with bindings = local_env } expr
+                env, result
+                // env, Lambda (lambdaEnv, argName, expr)
+            // let env = { env with bindings = env.bindings.Add() }
+            // env, UnitConstant
+        | RuntimeValue.Type t ->
+            match t with
+            | Type.Record fields ->
+                match args with
+                | NewRecord values ->
+                    env, Struct [
+                        for (name, value) in values do
+                            (name, eval env value |> snd)
+                    ]
+                | _ ->
+                    env, UnitConstant
+            | _ ->
+                env, UnitConstant
+        | _ ->
+            match args with
+            // | Expression.Ident "|>" ->
+            //     env, (eval env (Typed.Call (args, [ callee; yield! (List.tail args) ])) |> snd)
+            | _ ->
+                failwith "todo"
+    | Typed.Call (callee, args) ->
+        eval env (Typed.Call (Typed.Call (callee, [ List.head args ]), List.tail args))
+    | Typed.Constant value ->
+        env, value
+    | Typed.Unit -> env, RuntimeValue.UnitConstant
+    | Typed.Ident s ->
+        // let s = if s.StartsWith "@" then s.Substring(1) else s
+        if env.bindings.ContainsKey s then
+            env, env.bindings[s]
+        else
+            match s with
+            | "ignore" -> env, RuntimeValue.Lambda (Map.empty, "", Expression.Unit)
+            | "|>" -> env, RuntimeValue.Lambda (Map.empty, "a", Expression.Lambda (( "b", Type.Dynamic ), Expression.Call (Expression.Ident "b", [ Expression.Ident "a" ])))
+            | "@int" -> env, RuntimeValue.Type Type.Int64
+            | "+" -> env, RuntimeValue.Lambda (Map.empty, "a", Expression.Lambda (( "b", Type.Dynamic ), Expression.Add (Expression.Ident "a", Expression.Ident "b")))
+            | "*" -> env, RuntimeValue.Lambda (Map.empty, "a", Expression.Lambda (( "b", Type.Dynamic ), Expression.Mult (Expression.Ident "a", Expression.Ident "b")))
+            | _ when s.StartsWith "@" -> eval env (Expression.Ident (s.Substring(1)))
+    | Typed.Lambda(arg, body) ->
+        env, Lambda (Map.empty, fst arg, body)
+        // match args with
+        // | [] -> env, Lambda (Map.empty, "", body)
+        // | [ arg ] -> env, Lambda (env.bindings, fst arg, body)
+        // | arg::rest -> env, Lambda (env.bindings, fst arg, (Typed.Lambda (rest, body)))
+    | MultiMethod(arity, returnType) -> failwith "todo"
+    | Typed.Array expressions ->
+        env, expressions |> List.toArray |> Array.map (eval env >> snd) |> Array
+    | Typed.Sequence expressions ->
+        let mutable local_env = env
+        for expr in expressions |> List.take (expressions.Length - 1) do
+            let env, result = eval local_env expr
+            local_env <- env
+        env, snd (eval env (List.last expressions))
+    | Typed.Error expr ->
+        env, RuntimeValue.String (sprintf "%A" expr)
+    | MakeRecordConstructor fields ->
+        env, Type <| Type.Record [
+            for (name, e) in fields do
+                match (eval env e |> snd) with
+                | Type t -> name, t
+        ]
+    | NewRecord tuples -> failwith "todo"
+    // | _ ->
+        // env, RuntimeValue.Unit
+let eval env expr = eval_ [] env expr
+let compileSource text =
+    match run (manyTill line eof) text with
+    | Success (o, unit, position) ->
+        let filteredExpressions =
+            o
+            |> List.filter (fun (_, items) -> items.Length <> 0)
+            |> List.map (fun (ws, items) ->
+                ws, items |> List.filter (function Comment _ -> false | _ -> true)
+            )
+        // let asdf =
+            // getSubExpressions 0 filteredExpressions
+        let expressionTree =
+            tree 0 filteredExpressions
 
-let t: System.Threading.Tasks.Task<FsiEvaluationSession> = Session.create (new ConsoleWriter (), new ConsoleWriter())
-// match run (manyTill line eof) Sources.source2 with
-match run (manyTill line eof) Sources.normalCode with
-| Success(o, unit, position) ->
-    let filteredExpressions =
-        o
-        |> List.filter (fun (_, items) -> items.Length <> 0)
-        |> List.map (fun (ws, items) ->
-            ws, items |> List.filter (function Comment _ -> false | _ -> true)
-        )
-    // let asdf =
-        // getSubExpressions 0 filteredExpressions
-    let expressionTree =
-        tree 0 filteredExpressions
+        let exprList =
+            expressionTree |> List.map _.Flatten
+        // printfn "%A" exprList
 
-    let exprList =
-        expressionTree |> List.map _.Flatten
-    printfn "%A" exprList
-
-    let result =
-        exprList
-        |> List.map (fun expr ->
-            expr
-            |> Parse.parseExpression
-            |> fun expr ->
-                printfn "%A" expr
+        let env = ref { bindings = Map.empty; foo = () }
+        for expr in exprList do
+            let expr = Parse.parseExpression expr
+            let typed = typeCheck_ env.Value expr
+            let env', result = eval env.Value typed
+            // printfn "%A" expr
+            // printfn "%A" typed
+            printfn "%A" result
+            env.Value <- env'
+        let expressions =
+            exprList
+            |> List.map (fun expr ->
                 expr
-        )
-    let output =
-        result
-        |> List.map (fun expr -> expr.AsText 0 |> string)
-        |> String.concat "\n"
-        |> _.Replace("\r", "")
-        // |> List.iter (printfn "%s")
+                |> Parse.parseExpression
+                |> fun expr ->
+                    // printfn "%A" expr
+                    expr
+            )
+        // let typedExpressions = [
+        //     for expr in expressions do
+        //         let e = typeCheck_ env.Value expr
+        //         match e with
+        //         | Typed.Let (name, value) ->
+        //             env.Value <- { env.Value with bindings = env.Value.bindings.Add(name, value) }
+        //         | _ -> ()
+        //         e
+        // ]
+        // let output =
+        //     expressions
+        //     |> List.map (fun expr -> expr.AsText 0 |> string)
+        //     |> String.concat "\n"
+        //     |> _.Replace("\r", "")
+        Result.Ok ""
+    | Failure(s, parserError, unit) ->
+        Result.Error (s, parserError)
 
-    printfn $"{output}"
-    printfn "Waiting on F# interactive..."
-    // let fsi = Session.create (new StringWriter(StringBuilder()))
-    let fsi = t.Result
-    let result = fsi.EvalInteractionNonThrowing output
-    ()
-| Failure(s, parserError, unit) ->
-    printfn $"{s}"
-    printfn $"%A{parserError}"
+// do
+// match run (manyTill line eof) Sources.source2 with
+// match run (manyTill line eof) Sources.normalCode with
+let normal () =
+    match compileSource Sources.normalCode with
+    | Result.Ok output ->
+    // | Success(o, unit, position) ->
+            // |> List.iter (printfn "%s")
+        // let (Result.Ok output) = compileSource Sources.normalCode
+        printfn $"{output}"
+        let t: System.Threading.Tasks.Task<FsiEvaluationSession> = Session.create (new ConsoleWriter (), new ConsoleWriter())
+        printfn "Waiting on F# interactive..."
+        // let fsi = Session.create (new StringWriter(StringBuilder()))
+        let fsi = t.Result
+        let result = fsi.EvalInteractionNonThrowing output
+        ()
+    | Result.Error (s, parserError) ->
+        printfn $"{s}"
+        printfn $"%A{parserError}"

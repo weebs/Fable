@@ -12,6 +12,7 @@
         <Compile Include="AST.fs" />
         <Compile Include="Printer.fs" />
         <Compile Include="Unit.Tests.fs" />
+        <Compile Include="Closure.Compiler.fs" />
         <Compile Include="Program.fs"/>
         <None Include="asdf.fsx" />
     </ItemGroup>

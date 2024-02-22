@@ -3,10 +3,10 @@
 open AST.Unchecked
 open Fable.C
 
-let inline (*) (s: string) (n: int) =
-    [| for i in 1..n do yield s |] |> String.concat ""
-type Expression with
+type Expr with
     member this.AsText (depth: int) : SourceBuilder =
+        let inline (*) (s: string) (n: int) =
+            [| for i in 1..n do yield s |] |> String.concat ""
         let sb = SourceBuilder()
         match this with
         | Range(from, until) ->
@@ -84,7 +84,7 @@ type Expression with
                 fields
                 |> List.map (fun (name, t) -> $"{name.AsText 0}: {t.AsText 0}")
                 |> String.concat "; "
-            $"struct {{ {fieldsText} }}"
+            $"fun data -> struct {{ {fieldsText} }}"
             |> sb.Append
         | Let (info, expr) ->
             match expr with
