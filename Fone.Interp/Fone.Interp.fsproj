@@ -18,6 +18,10 @@
     </ItemGroup>
 
     <ItemGroup>
+      <PackageReference Include="Avalonia.Desktop" Version="11.0.9" />
+      <PackageReference Include="Avalonia.FuncUI" Version="1.2.0" />
+      <PackageReference Include="Avalonia.FuncUI.Elmish" Version="1.2.0" />
+      <PackageReference Include="Avalonia.Themes.Fluent" Version="11.0.9" />
       <PackageReference Include="FParsec" Version="2.0.0-beta2" />
       <PackageReference Include="FSharp.Compiler.Service" Version="43.8.200" />
     </ItemGroup>

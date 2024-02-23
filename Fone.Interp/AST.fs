@@ -73,6 +73,7 @@ and TypeDesc =
     obj
 module Typed =
     type Expression =
+        | Apply of callee: Expression * value: Expression
         | Call of callee: Expression * args: Expression list
         // | Constant of Type
         | Constant of RuntimeValue

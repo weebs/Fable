@@ -2,7 +2,9 @@
 
 open System
 open System.IO
+open System.Linq.Expressions
 open System.Text
+open Avalonia.Controls
 open FSharp.Compiler.Interactive.Shell
 open Fone.Interp.AST
 open Fone.Interp.AST.Typed
@@ -424,7 +426,17 @@ let rec typeCheck_ (env: AST.Env) (expr: Expr) =
             | _ -> typeCheck { constraints = Map.empty } expression
         Typed.Let (argInfo.Name, typeCheck_ env expression)
     | Call(callee, args) ->
-        Typed.Call (typeCheck_ env callee, args |> List.map (typeCheck_ env))
+        let rec loop =
+            ()
+        match args with
+        | [ arg ] ->
+            Apply (typeCheck_ env callee, typeCheck_ env arg)
+        | _ ->
+            typeCheck_ env
+                (Call
+                     (Call (callee, [ List.head args ]),
+                      List.tail args))
+            // Typed.Call (typeCheck_ env callee, args |> List.map (typeCheck_ env))
     | Range(from, until) -> failwith "todo"
     | Ident s -> Typed.Ident s
     | Throw (Token.Sequence tokens) ->
@@ -489,8 +501,29 @@ let rec typeCheck_ (env: AST.Env) (expr: Expr) =
                     yield name, result
         ]
         MakeRecordConstructor fields
-let rec eval_ acc env expr =
-    let eval = eval_ (expr :: acc)
+let rec compile_ printfn acc (env: {| locals: Map<_,_> |}) expr : _ -> RuntimeValue =
+    let compile = compile_ printfn (expr :: acc)
+    match expr with
+    | Add (a, b) ->
+        let a = compile env a
+        let b = compile env b
+        fun env ->
+            let (Number a) = a env
+            let (Number b) = b env
+            a + b
+            |> Number
+    | Typed.Lambda ((arg, t), body) ->
+        let body = compile env body
+        fun (env: {| locals: Map<_,_> |}) ->
+            fun value ->
+                let env = {| env with locals = env.locals.Add(arg, value) |}
+                let result = body env
+                result
+            |> box
+            |> Compiled
+
+let rec eval_ printfn acc env expr =
+    let eval = eval_ printfn (expr :: acc)
     match expr with
     | Typed.Add (a, b) ->
         let _, a = eval env a
@@ -509,6 +542,26 @@ let rec eval_ acc env expr =
         let _, result = eval env value
         printfn $"let {name} = %A{result}"
         { env with bindings = env.bindings.Add(name, result) }, RuntimeValue.UnitConstant
+    | Typed.Apply (callee, value) ->
+        match eval env callee with
+        | env, RuntimeValue.Lambda (lambdaEnv, arg, expr) ->
+            let _, value = eval env value
+            let lambdaEnv = lambdaEnv.Add(arg, value)
+            match expr with
+            | Expression.Lambda ((s, _), body) ->
+                env, RuntimeValue.Lambda (lambdaEnv, s, body)
+            | _ ->
+                let mutable local_env = env.bindings
+                for kv in lambdaEnv do
+                    local_env <- local_env.Add (kv.Key, kv.Value)
+                let _, result = eval { env with bindings = local_env } expr
+                env, result
+        | env, RuntimeValue.Type t ->
+            let value = eval env value
+            env, UnitConstant
+        | env, toCall ->
+            let value = eval env value
+            env, UnitConstant
     | Typed.Call(callee, [ args ]) ->
         let _, fn = eval env callee
         match fn with
@@ -564,7 +617,7 @@ let rec eval_ acc env expr =
             | "*" -> env, RuntimeValue.Lambda (Map.empty, "a", Expression.Lambda (( "b", Type.Dynamic ), Expression.Mult (Expression.Ident "a", Expression.Ident "b")))
             | _ when s.StartsWith "@" -> eval env (Expression.Ident (s.Substring(1)))
     | Typed.Lambda(arg, body) ->
-        env, Lambda (Map.empty, fst arg, body)
+        env, Lambda (env.bindings, fst arg, body)
         // match args with
         // | [] -> env, Lambda (Map.empty, "", body)
         // | [ arg ] -> env, Lambda (env.bindings, fst arg, body)
@@ -586,11 +639,15 @@ let rec eval_ acc env expr =
                 match (eval env e |> snd) with
                 | Type t -> name, t
         ]
-    | NewRecord tuples -> failwith "todo"
+    | NewRecord tuples ->
+        env, Struct [
+            for (name, value) in tuples do
+                name, eval env value |> snd
+        ]
     // | _ ->
         // env, RuntimeValue.Unit
-let eval env expr = eval_ [] env expr
-let compileSource text =
+let eval printfn env expr = eval_ printfn [] env expr
+let compileSource text (printfn: string -> unit) =
     match run (manyTill line eof) text with
     | Success (o, unit, position) ->
         let filteredExpressions =
@@ -612,10 +669,10 @@ let compileSource text =
         for expr in exprList do
             let expr = Parse.parseExpression expr
             let typed = typeCheck_ env.Value expr
-            let env', result = eval env.Value typed
+            let env', result = eval printfn env.Value typed
             // printfn "%A" expr
             // printfn "%A" typed
-            printfn "%A" result
+            printfn $"%A{result}"
             env.Value <- env'
         let expressions =
             exprList
@@ -648,7 +705,7 @@ let compileSource text =
 // match run (manyTill line eof) Sources.source2 with
 // match run (manyTill line eof) Sources.normalCode with
 let normal () =
-    match compileSource Sources.normalCode with
+    match compileSource Sources.normalCode (printfn "%s") with
     | Result.Ok output ->
     // | Success(o, unit, position) ->
             // |> List.iter (printfn "%s")
@@ -663,3 +720,94 @@ let normal () =
     | Result.Error (s, parserError) ->
         printfn $"{s}"
         printfn $"%A{parserError}"
+
+let ``type constructor test`` () =
+    printfn "%A" (compileSource Sources.normalCode)
+
+
+module UI =
+    open Avalonia
+    open Avalonia.Controls
+    open Avalonia.Themes.Fluent
+    open Elmish
+    open Avalonia.FuncUI.Hosts
+    open Avalonia.FuncUI
+    open Avalonia.FuncUI.Elmish
+    open Avalonia.Controls.ApplicationLifetimes
+
+    module Counter =
+        open Avalonia.FuncUI.DSL
+        type Model = {
+            code: string
+            messages: string list
+        }
+        type Message =
+            | Start
+            | Message of string
+        let init () = { code = ""; messages = [] }, []
+        let update msg model =
+            match msg with
+            | Start ->
+                let src = Sources.normalCode
+                { model with code = src }, Cmd.ofEffect (fun dispatch ->
+                    let print s =
+                        dispatch (Message s)
+                    compileSource src print
+                    |> ignore
+                )
+            | Message s ->
+                { model with messages = model.messages @ [ s ] }, []
+        let view state dispatch =
+            DockPanel.create [
+                DockPanel.children [
+                    Button.create [
+                        Button.content "foo"
+                        Button.onClick (fun e -> dispatch Start)
+                    ]
+                    TextBlock.create [
+                        TextBlock.text state.code
+                    ]
+                    TextBlock.create [
+                        TextBlock.text (String.concat "\n" state.messages)
+                    ]
+                ]
+            ]
+
+    type MainWindow() as this =
+        inherit HostWindow()
+        do
+            base.Title <- "Counter Example"
+            // base.Icon <- WindowIcon(System.IO.Path.Combine("Assets","Icons", "icon.ico"))
+            base.Height <- 400.0
+            base.Width <- 400.0
+
+            //this.VisualRoot.VisualRoot.Renderer.DrawFps <- true
+            //this.VisualRoot.VisualRoot.Renderer.DrawDirtyRects <- true
+            Elmish.Program.mkProgram Counter.init Counter.update Counter.view
+            |> Program.withHost this
+            // |> Program.withConsoleTrace
+            |> Program.run
+
+    type App() =
+        inherit Application()
+
+        override this.Initialize() =
+            this.Styles.Add (FluentTheme())
+            this.RequestedThemeVariant <- Styling.ThemeVariant.Dark
+
+        override this.OnFrameworkInitializationCompleted() =
+            match this.ApplicationLifetime with
+            | :? IClassicDesktopStyleApplicationLifetime as desktopLifetime ->
+                let mainWindow = MainWindow()
+                desktopLifetime.MainWindow <- mainWindow
+            | _ -> ()
+
+    module Program =
+
+        [<EntryPoint>]
+        let main(args: string[]) =
+            AppBuilder
+                .Configure<App>()
+                .UsePlatformDetect()
+                .UseSkia()
+                .StartWithClassicDesktopLifetime(args)
