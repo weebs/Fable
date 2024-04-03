@@ -940,7 +940,7 @@ let private transformExpr
                     &&
                     // The replacement only needs to happen when var.FullType = byref<fsExpr.Type>
                     fsExpr.Type = var.FullType.GenericArguments.[0]
-                    && com.Options.Language <> Rust
+                    && com.Options.Language <> Rust && com.Options.Language <> Plugin "C"
                 then
                     // Getting byref value is compiled as FSharpRef op_Dereference
                     return Replacements.Api.getRefCell com r v.Type v

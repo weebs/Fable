@@ -172,6 +172,8 @@ let setRefCell (com: ICompiler) r (expr: Expr) (value: Expr) =
     | Python -> Py.Replacements.setRefCell com r expr value
     | Rust -> Rust.Replacements.setRefCell com r expr value
     | Dart -> Dart.Replacements.setRefCell com r expr value
+    | Plugin "C" ->
+        Set(expr, SetKind.ValueSet, expr.Type, value, r)
     | _ -> JS.Replacements.setRefCell com r expr value
 
 let makeRefCellFromValue (com: ICompiler) r (value: Expr) =
@@ -193,6 +195,8 @@ let makeRefFromMutableValue (com: ICompiler) ctx r t (value: Expr) =
     | Python -> Py.Replacements.makeRefFromMutableValue com ctx r t value
     | Rust -> Rust.Replacements.makeRefFromMutableValue com ctx r t value
     | Dart -> Dart.Replacements.makeRefFromMutableValue com ctx r t value
+    | Plugin "C" ->
+        Operation (OperationKind.Unary (UnaryOperator.UnaryAddressOf, value), [], value.Type, r)
     | _ -> JS.Replacements.makeRefFromMutableValue com ctx r t value
 
 let makeRefFromMutableField (com: ICompiler) ctx r t (value: Expr) =
