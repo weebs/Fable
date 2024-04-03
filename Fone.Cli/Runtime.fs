@@ -105,6 +105,4 @@ void Runtime_swap_value(void** location, void* value, void* destructor) {
     if (oldValue != NULL)
         Runtime_end_var_scope(oldValue, destructor);
 }
-
-int Hash_hashValue(void*, int);
 """

@@ -543,9 +543,9 @@ let findAnonymousFunctions ctx (expr: Expr) : Option<(Expr * Ident list)> list =
                 loop e
                 None
             elif (List.contains e childDelegates) = false then
-                printfn "Adding delegate!"
-                printfn $"{Print.printExpr 0 e}"
-                printfn $"Existing delegates: %A{childDelegates |> List.map (Print.printExpr 2)}"
+                // printfn "Adding delegate!"
+                // printfn $"{Print.printExpr 0 e}"
+                // printfn $"Existing delegates: %A{childDelegates |> List.map (Print.printExpr 2)}"
                 Some (Delegate(uncurriedArgs, unwrappedLambdaBody, None, []), gatherIdentsBefore e expr)
             else None
         | _ -> None

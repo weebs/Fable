@@ -227,7 +227,7 @@ let generateGenericImplementations context path projHeaderName : string * Generi
             )
         generic_interactions <- []
         for usage in temp do
-            printfn $"Generic: %A{usage}"
+            // printfn $"Generic: %A{usage}"
             match fst usage with
             | Closure(captured, types, ``return``) ->
                 let info = Func.writeClosure captured types ``return``

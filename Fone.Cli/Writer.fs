@@ -222,8 +222,8 @@ let rec _writeExpr (expr: C.Expr) : string =
     | C.TypeCast(``type``, expr) ->
         if (``type``.ToTypeString().Contains "voidptr") then
             for i in 1..20 do
-                printfn "%A" ``type``
-                printfn "%A" expr
+                printfn $"%A{``type``}"
+                printfn $"%A{expr}"
         $"({``type``.ToTypeString()})({_writeExpr expr})"
     | C.SizeOf t ->
         $"sizeof({t.ToTypeString()})"
@@ -293,7 +293,8 @@ let doRaii (body: C.Statement list) (sb: SourceBuilder) =
 
         | _ -> ()
         // sb.AppendLine()
-        printfn $"{i}"
+
+        // printfn $"{i}"
 
 let rec _writeStmt (statement: C.Statement) : SourceBuilder =
     let sb = SourceBuilder()

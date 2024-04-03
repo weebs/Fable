@@ -178,8 +178,10 @@ type FableCompilationCache() as this =
         member this.GetEntity(ref) =
             try entitiesByRef[ref]
             with ex ->
-                print_debug $"Error while searching for entity with reference %A{ref}"
-                Unchecked.defaultof<_>
+                try entitiesByRef[{ ref with FullName = "Fable." + ref.FullName }]
+                with ex ->
+                    print_debug $"Error while searching for entity with reference %A{ref}"
+                    Unchecked.defaultof<_>
         member this.GetMember(ref) =
             let ref = refKey ref
             try
@@ -190,6 +192,7 @@ type FableCompilationCache() as this =
                 Unchecked.defaultof<_>
         member this.TryGetEntity(ref) =
             entitiesByRef.TryFind ref
+            |> Option.orElseWith (fun () -> entities.TryFind ("Fable." + ref.FullName) |> Option.map fst)
         member this.TryGetEntityWithName name =
             entities |> Map.tryFind name
         member this.TryGetMemberWithName (entityName: string, memberName: string) =

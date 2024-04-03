@@ -415,7 +415,7 @@ module Query =
 //                | Null _type -> true
                 | _ -> false
 
-            printfn $"{callInfo.Args.Length} = {idents.Length} && %A{callInfo.Args |> List.map (Print.printExpr 0)} \n %A{idents}"
+            // printfn $"{callInfo.Args.Length} = {idents.Length} && %A{callInfo.Args |> List.map (Print.printExpr 0)} \n %A{idents}"
             callInfo.Args.Length = idents.Length &&
             (List.map2 compareExprAndIdent callInfo.Args idents |> List.forall id)
             // true
@@ -1156,7 +1156,7 @@ type Print =
 //        System.String.Join("_", generics |> List.map (transformType generics))
         let genericParamTypeString =
             if fullName.Contains "voidptr" then
-                printfn "generic params for voidptr\n%A" generics
+                printfn $"generic params for voidptr\n%A{generics}"
             System.String.Join("_", generics |> List.map (fun g -> g.ToNameString()))
         let className =
             fullName.Replace(".", "_")
@@ -1165,9 +1165,11 @@ type Print =
         // .Replace("Tmds_Linux", "")
         // if className.StartsWith "Fable_" then className.Substring("Fable_".Length) else className
         match fullName with
-        | "Fable.System.String"
-        | "Fable.System.Collections.Generic.Dictionary`1"
-        | "Fable.System.Collections.Generic.List`1" ->
+        // | "Fable.System.String"
+        // | "Fable.System.Collections.Generic.Dictionary`1"
+        // | "Fable.System.Collections.Generic.List`1" ->
+        //     className.Substring("Fable_".Length)
+        | name when name.StartsWith("Fable.System") || name.StartsWith("Fable.Microsoft") || name.StartsWith("Fable.FSharp") ->
             className.Substring("Fable_".Length)
         | _ ->
             className
@@ -1181,6 +1183,9 @@ type Print =
         Print.compiledMethodName (ident, generics, _type)
     static member compiledNamespace (e: EntityRef) =
         e.FullName.Replace(".", "_")
+        Microsoft.FSharp.Collections.Seq.map
+        Microsoft.FSharp.Core.Operators.op_Range 1 10
+
     static member constructorName (c: ClassDecl) =
         Print.compiledTypeName c.Entity + "_ctor"
     static member finalizerName (c: ClassDecl) =
@@ -1278,7 +1283,8 @@ let isArgValueThis generics (com: Type.ICompiler) (arg: Ident) : Ident option =
                 match com.TryGetEntity(entityRef) with
                 | Some ent when ent.IsValueType ->
                     //Some { arg with Name = "this_value"; Type = genericArgs.[0] }
-                    None
+                    Some arg
+                    // None
                 | _ -> None
             | _ -> None
         | _ -> None

@@ -7,6 +7,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <Compile Include="Mixin.fs" />
         <Compile Include="Runtime.fs" />
         <Compile Include="Imports.fs" />
         <Compile Include="SourceBuilder.fs" />
@@ -27,6 +28,7 @@
         <Compile Include="File.fs" />
         <Compile Include="Database.fs" />
         <Compile Include="Cli.fs" />
+        <Content Include="README.md" />
     </ItemGroup>
 
     <ItemGroup>
@@ -35,9 +37,16 @@
     <ItemGroup>
 <!--        <ProjectReference Include="..\Fable.Compiler\Fable.Compiler.fsproj" />-->
 <!--        <ProjectReference Include="..\Fable.Transforms\Fable.Transforms.fsproj" />-->
+
         <Reference Include="../lib/fcs/FSharp.Compiler.Service.dll" />
         <Reference Include="../lib/fcs/FSharp.DependencyManager.Nuget.dll" />
         <Reference Include="../lib/fcs/FSharp.Core.dll" />
+<!--        <PackageReference Include="FSharp.Compiler.Service" />-->
+<!--        <PackageReference Include="FSharp.DependencyManager.Nuget" />-->
+<!--        <PackageReference Include="FSharp.Core" />-->
+    </ItemGroup>
+    <ItemGroup>
+      <PackageReference Include="Thoth.Json.Net" Version="11.0.0" />
     </ItemGroup>
 
 </Project>

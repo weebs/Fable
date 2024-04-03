@@ -317,6 +317,9 @@ let transformFile (_com: Fable.Compiler) (file: File) =
             | Some ent ->
                 let isGeneric = ent.GenericParameters.Length > 0
                 compiler.AddEntity(ent)
+                if ent.IsInterface then
+                    let members = ent.MembersFunctionsAndValues |> Array.ofSeq
+                    ()
                 if not isGeneric then
                     // Todo we ask for this twice
                     let emitTypeAttr = ent.Attributes |> Seq.tryFind _.Entity.FullName.Contains("EmitType") // = Const.emitType)
@@ -348,7 +351,8 @@ let transformFile (_com: Fable.Compiler) (file: File) =
                         State.genericMethodDeclarations := State.genericMethodDeclarations.contents.Add ((classDecl.Entity.FullName, constructor.Name), constructor)
     //                    compiler.AddMember()
                     | None ->
-                        printfn "TODO: Constructors for generic record types"
+                        // printfn "TODO: Constructors for generic record types"
+                        // todo: Constructors for generic record types
                         ()
             | _ ->
                 ()

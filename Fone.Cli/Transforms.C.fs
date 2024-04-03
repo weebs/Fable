@@ -1,4 +1,5 @@
 module rec Fable.C.Transforms
+#nowarn "1182"
 
 open System
 open Fable.AST.Fable
@@ -711,6 +712,9 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
         | "FreeHGlobal", "System.Runtime.InteropServices.Marshal.c" ->
             C.Call ("free", callInfo.Args |> List.map (transformExpr ctx generics))
             // C.Expr.Emit $"%A{callee}"
+        // todo: These didn't include "Marshal" in the file path
+        // | "AllocHGlobal", "System.Runtime.InteropServices.c" -> C.Call ("malloc", callInfo.Args |> List.map (transformExpr ctx generics))
+        // | "FreeHGlobal", "System.Runtime.InteropServices.c" -> C.Call ("free", callInfo.Args |> List.map (transformExpr ctx generics))
         | "fill", "Array.c" ->
             let t = transformType generics expr.Type.Generics[0]
             let tName = t.ToNameString()
@@ -759,8 +763,6 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
             // | _ -> C.Expr.Emit $"(void*0) /* Unchecked.defaultOf<%A{``type``}> */" //C.Value (C.ValueKind.Void)
         | "equals", "Util.c" -> C.Binary (C.BinaryOp.Eq, transformExpr ctx generics callInfo.Args.[0], transformExpr ctx generics callInfo.Args.[1])
 //                C.Expr.Emit $"(void*) /* %A{expr} */"
-        | "AllocHGlobal", "System.Runtime.InteropServices.c" -> C.Call ("malloc", callInfo.Args |> List.map (transformExpr ctx generics))
-        | "FreeHGlobal", "System.Runtime.InteropServices.c" -> C.Call ("free", callInfo.Args |> List.map (transformExpr ctx generics))
         | "NullPointer", "Microsoft.FSharp.NativeInterop.NativePtrModule.c" ->
             C.Expr.Emit "(void*)0 /* NullPointer */"
         | "AddPointerInlined", "Microsoft.FSharp.NativeInterop.NativePtrModule.c" ->
@@ -900,7 +902,10 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
         | IdentExpr ident ->
             match isArgValueThis generics ctx.db ident with
             | Some ident -> C.Ident (ident, true)
-            | _ -> C.Ident (ident, isValueType ident.Type)
+            | _ ->
+                if isByRefType ident.Type
+                then C.Unary (C.UnaryOp.Deref, C.Ident (ident, true)) // todo : isValueType
+                else C.Ident (ident, isValueType ident.Type)
         | Operation(operationKind, tags, ``type``, _sourceLocationOption) ->
             transformOperation ctx generics operationKind ``type``
         | Call(callee, callInfo, _type, _sourceLocationOption) ->
@@ -1589,6 +1594,8 @@ let identsToWatch =
     ]
 let rec requiresTracking generics t =
     match t with
+    | DeclaredType(ref, genericArgs) when ref.FullName.StartsWith "Microsoft.FSharp.Core.byref" ->
+        requiresTracking generics genericArgs[0]
     | DeclaredType(entityRef, genericArgs) ->
         match database.contents.TryGetEntity(entityRef) with
         | Some e when e.IsValueType -> false
@@ -1709,7 +1716,7 @@ let transformLet ctx generics (ident: Ident) value (body: Expr) =
                     // For more complex assignment, we have to declare the type and then initialize it in a code block
                     C.StatementAssignment << C.Block <| (transformMember ctx generics value)
     let variable_type =
-        printfn $"Variable type: %A{ident.Type}"
+        // printfn $"Variable type: %A{ident.Type}"
         match transformType generics ident.Type with
         | C.Void -> C.Ptr C.Void
         | t -> t
@@ -1995,7 +2002,7 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
                 //         when entityRef.FullName = Const.byrefType || entityRef.FullName = Const.byrefType2 ->
                 //     Operation (OperationKind.Unary (UnaryOperator.UnaryDeref, expr), [], genericArgs.[0], expr.Range)
                 | _ -> expr
-            let value =
+            let fixedValue =
                 match expr.Type with
                 | DeclaredType(entityRef, genericArgs) when entityRef.FullName = Const.byrefType2 && genericArgs.[0] = value.Type ->
                     Operation (OperationKind.Unary (UnaryOperator.UnaryAddressOf, value), [], expr.Type, value.Range)
@@ -2024,10 +2031,10 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
                         //     C.DerefMemberAccess
                         | _ ->
                             C.MemberAccess
-                    if requiresTracking generics value.Type then
-                        let e = transformExpr ctx generics value
+                    if requiresTracking generics fixedValue.Type then
+                        let e = transformExpr ctx generics fixedValue
                         let _member = (accessType ((transformExpr ctx generics expr), fieldName))
-                        let (C.Ptr valueType) = transformType generics value.Type
+                        let (C.Ptr valueType) = transformType generics fixedValue.Type
                         // todo: reassign
                         // [ C.Emit $"Runtime_swap_value((void**)&{Compiler.writeExpression _member}, {Compiler.writeExpression e});" ]
                         [
@@ -2038,7 +2045,7 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
                         [
                             // C.Expression <| Print.emitComment body
                             // C.Emit (sprintf "%A" body)
-                            C.Assignment ((accessType ((transformExpr ctx generics expr), fieldName)), transformExpr ctx generics value)
+                            C.Assignment ((accessType ((transformExpr ctx generics expr), fieldName)), transformExpr ctx generics fixedValue)
                         ]
                 | ExprSet setExpr ->
                     match expr.Type with
@@ -2049,7 +2056,7 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
                           C.Statement.Expression (C.Call ($"System_Array__{genericType}_set_Item", [
                             transformExpr ctx generics expr
                             transformExpr ctx generics setExpr
-                            transformExpr ctx generics value
+                            transformExpr ctx generics fixedValue
                         ])) ]
                     | _ ->
                         [ C.Emit $"/* %A{body} */" ]
@@ -2102,6 +2109,23 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
             | NewRecord _ -> transformNewRecord ctx generics body
             | _ -> [ C.Statement.Expression <| transformExpr ctx generics body ]
         | _ -> [ C.Statement.Expression <| transformExpr ctx generics body ]
+        |> fun result ->
+            let useSourceMap = true
+            let range =
+                match body.Range with
+                | Some _ -> body.Range
+                | None ->
+                    match body with
+                    | Let(ident, value, body) ->
+                        ident.Range |> Option.orElse value.Range |> Option.orElse body.Range
+                    | _ -> None
+            match range with
+            | Some range when useSourceMap ->
+                [
+                    C.Emit $"#line {range.start.line} \"{Path.GetFileName ctx.currentFile}\""
+                    yield! result
+                ]
+            | _ -> result
     loop generics body
 
 let transformMemberDeclArgs generics (args: Ident list) : Ident list * C.Statement list =
