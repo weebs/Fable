@@ -12,14 +12,14 @@ open Fable.AST
 module print =
     let printfn _ = ()
 
-let buildConstructor context generics genericParams (member_declaration: MemberDecl) (fullName: string) isValueType =
+let buildConstructor ctx generics genericParams (member_declaration: MemberDecl) (fullName: string) isValueType =
     print.printfn $"Build constructor {fullName}"
-    let f = transformMember context generics member_declaration.Body
-    let args = (member_declaration.Args |> List.map (fun i -> i.Name, transformType generics i.Type))
-    let c_types = List.map snd generics |> List.map (transformType generics)
+    let f = transformMember ctx generics member_declaration.Body
+    let args = (member_declaration.Args |> List.map (fun i -> i.Name, transformType ctx generics i.Type))
+    let c_types = List.map snd generics |> List.map (transformType ctx generics)
     let id = Print.compiledMethodName("ctor", c_types, fullName)
-    let typeName = Print.compiledTypeName(List.map (transformType generics) genericParams, fullName)
-    let type_sig = Print.compiledTypeSignature (generics, transformType, context.db, member_declaration)
+    let typeName = Print.compiledTypeName(List.map (transformType ctx generics) genericParams, fullName)
+    let type_sig = Print.compiledTypeSignature (generics, transformType ctx, ctx.db, member_declaration)
     let finalizer_name = Print.finalizerName (c_types, fullName)
     let return_type = if isValueType then C.UserDefined (typeName, true, None) else C.Ptr (C.UserDefined (typeName, true, None))
     let function_info: C.FunctionInfo = {
@@ -67,8 +67,8 @@ let buildConstructor context generics genericParams (member_declaration: MemberD
     }
     (id, type_sig, function_info)
 
-let buildFinalizer generics genericParams (ent: Entity) =
-    let name = Print.compiledTypeName((List.map (transformType generics) genericParams), ent.FullName)
+let buildFinalizer ctx generics genericParams (ent: Entity) =
+    let name = Print.compiledTypeName((List.map (transformType ctx generics) genericParams), ent.FullName)
     let fields = ent.FSharpFields
     let finalizer_id = $"{name}_Destructor"
     {
@@ -84,18 +84,18 @@ let buildFinalizer generics genericParams (ent: Entity) =
             for field in fields do
                 match field.FieldType with
                 | DeclaredType(entityRef, genericArgs) ->
-                    match database.contents.TryGetEntity(entityRef) with
+                    match ctx.db.TryGetEntity(entityRef) with
                     | Some e ->
                         if not (e.IsValueType) then
                             // let c_generics = genericArgs |> List.map (transformType generics)
                             // C.Emit $"{Print.finalizerName (c_generics, e)}(this$->{field.Name});"
-                            let fieldTypeName = transformType generics field.FieldType |> _.ToNameString()
+                            let fieldTypeName = transformType ctx generics field.FieldType |> _.ToNameString()
                             C.Emit $"Runtime_end_var_scope(this$->{field.Name}, {fieldTypeName}_Destructor);"
                     | None when entityRef.FullName = "nativeptr`1" -> ()
                     | _ -> ()
 //                            C.Emit $"free(this$->{field.Name});"
                 | Array(genericArg, arrayKind) ->
-                    let fieldTypeName = transformType generics genericArg |> _.ToNameString()
+                    let fieldTypeName = transformType ctx generics genericArg |> _.ToNameString()
                     C.Emit $"Runtime_end_var_scope(this$->{field.Name}, System_Array__{fieldTypeName}_Destructor);"
                     // C.Emit $"free(this$->{field.Name});"
                 | _ -> ()
@@ -128,7 +128,7 @@ let transformFunc context (name: string) (args: Ident list) (funcBody: Expr) (ge
                         // C.Emit "// __thread_context--;"
                         // todo: If the return type requires tracking, then it needs to be tracked with autorelease
                         // ex: returning obj.aString while later obj is unassigned which would clean up aString too early
-                        if requiresTracking generics expr.Type then
+                        if requiresTracking context generics expr.Type then
                             // todo: Assign to toReturn
                             // C.Return (C.Expr.Emit $"Runtime_autorelease({Compiler.writeExpression cExpr})")
                             (C.Emit $"__toReturn = {Writer.writeExpression cExpr};")
@@ -159,15 +159,15 @@ let transformFunc context (name: string) (args: Ident list) (funcBody: Expr) (ge
         else
             [
                 // if requiresTracking generics expr.Type then
-                C.Emit $"{(transformType generics funcBody.Type).ToTypeString()} __toReturn;"
+                C.Emit $"{(transformType context generics funcBody.Type).ToTypeString()} __toReturn;"
                 C.Emit "__thread_context++;"
                 if body.Length > 1 then
                     () // C.Emit "// __thread_context++;"
                 yield! loop generics body
                 C.Emit "__thread_context--;"
                 C.Emit "Runtime_clear_pool();"
-                if requiresTracking generics expr.Type then
-                    match transformType generics funcBody.Type with
+                if requiresTracking context generics expr.Type then
+                    match transformType context generics funcBody.Type with
                     | C.Ptr typ ->
                         C.Return (C.Expr.Emit $"Runtime_autorelease(__toReturn, {typ.ToNameString()}_Destructor)")
                     | _else ->
@@ -178,7 +178,7 @@ let transformFunc context (name: string) (args: Ident list) (funcBody: Expr) (ge
     let dir = IO.Path.GetDirectoryName(context.currentFile)
     let filename = IO.Path.GetFileName(context.currentFile)
     #if !FABLE_COMPILER
-    let result = Print.printExpr 1 funcBody
+    let result = Print.printExpr context.db 1 funcBody
     let debug_dir = IO.Path.Join(dir, "fone")
     if not (IO.Directory.Exists(debug_dir)) then
         IO.Directory.CreateDirectory(debug_dir)
@@ -201,12 +201,12 @@ let transformFunc context (name: string) (args: Ident list) (funcBody: Expr) (ge
     io.file.AppendAllText(io.path.join(dir, $"build/{filename}.{name}.debug.fs"), $"let {name} () =\n{result}\n\n")
     #endif
 
-    let (args, extra_statements) = transformMemberDeclArgs generics args
+    let (args, extra_statements) = transformMemberDeclArgs context generics args
 //    let (args, extra_statements) = args, []
     let rt =
         match funcBody.Type with
         // | Unit -> C.Void
-        | _ -> transformType generics funcBody.Type
+        | _ -> transformType context generics funcBody.Type
     let body = addReturn generics funcBody
 
     print.printfn $"[Fable.NativeCode] Transforming function: {name}"
@@ -247,7 +247,7 @@ let transformFunc context (name: string) (args: Ident list) (funcBody: Expr) (ge
     let args =
         args
         |> filterFunctionMethodArgs
-        |> List.map (fun a -> (a.Name, transformType generics a.Type))
+        |> List.map (fun a -> (a.Name, transformType context generics a.Type))
     {
         id = name
         return_type = rt
@@ -294,7 +294,7 @@ module Type =
                     let ent = com.GetEntity(classDecl.Entity)
                     // Filter out types that inherit from System.Attribute
                     if ent.BaseType |> Option.map (fun t -> t.Entity.FullName) <> Some "System.Attribute" then
-                        let finalizer = Function.buildFinalizer [] [] (com.GetEntity(classDecl.Entity))
+                        let finalizer = Function.buildFinalizer context [] [] (com.GetEntity(classDecl.Entity))
 
                         print.printfn $"Compiling function {finalizer.id}"
         //                print.printfn $"{Compiler.writeFunction sb f}"
@@ -342,7 +342,7 @@ module Type =
                     if not isGeneric then
     //                    classDeclarations += (classDecl.Entity.FullName, classDecl)
                         let ent = com.GetEntity(classDecl.Entity)
-                        let f = Function.buildFinalizer [] [] ent
+                        let f = Function.buildFinalizer context [] [] ent
                         compiledModule += (f.id, C.Function f)
                         // compiler.UpdateFile(context.currentFile, FileCompilationResults.AddClassDeclaration, classDecl)
                 (includes, compiledModule.Value)
@@ -591,30 +591,30 @@ module Generics =
         let ent = compiler.TryGetEntity(c.Entity.FullName)
         ent |> Option.map (fun ent -> ent.GenericParameters |> List.map (fun p -> p.Name))
         |> Option.defaultValue []
-    let getFields (c: ClassDecl) : (string * C.Type) list =
+    let getFields ctx (c: ClassDecl) : (string * C.Type) list =
         // let ent =
         compiler.TryGetEntity(c.Entity.FullName)
-        |> Option.map (fun ent -> ent.FSharpFields |> List.map (fun f -> f.Name, transformType [] f.FieldType))
+        |> Option.map (fun ent -> ent.FSharpFields |> List.map (fun f -> f.Name, transformType ctx [] f.FieldType))
         |> Option.defaultValue []
-    let macroForGenericClass (c: ClassDecl) : string =
+    let macroForGenericClass ctx (c: ClassDecl) : string =
         let macro_name = "Declare_" + c.Entity.FullName.Split(char "`").[0].Replace(".", "_")
         let macroArgs = getGenericParams c
         let macro_args_text = System.String.Join(", ", macroArgs)
-        let fields = getFields c
+        let fields = getFields ctx c
         let name_with_args_added = c.Entity.FullName.Replace(".", "_").Replace($"`{macroArgs.Length}", "__" + System.String.Join("_", macroArgs))
         $"""#define {macro_name}({macro_args_text}) typedef struct {name_with_args_added} {{\
     {System.String.Join(";\\\n    ", fields |> List.map Writer.writeStructField) + ";\\\n"}\
     }} {name_with_args_added};"""
-    let addMethodImplementation context (generics: (string * Type) list) (entityName: string) (isValueType: bool) (genericParams: Type list) (fableMethodName: string) (member_declaration: MemberDecl) : string * string * C.FunctionInfo =
+    let addMethodImplementation ctx (generics: (string * Type) list) (entityName: string) (isValueType: bool) (genericParams: Type list) (fableMethodName: string) (member_declaration: MemberDecl) : string * string * C.FunctionInfo =
         if fableMethodName.Contains "ctor" then
-            Function.buildConstructor context generics genericParams member_declaration entityName isValueType
+            Function.buildConstructor ctx generics genericParams member_declaration entityName isValueType
         else
             //let name = Print.compiledMethodName(fableMethodName, c_types, declaringEntity)
-            let type_sig = Print.compiledTypeSignature (generics, transformType, context.db, member_declaration)
-            let name = Print.compiledMethodName (generics, transformType, context.db, member_declaration)
+            let type_sig = Print.compiledTypeSignature (generics, transformType ctx, ctx.db, member_declaration)
+            let name = Print.compiledMethodName (generics, transformType ctx, ctx.db, member_declaration)
             if name.EndsWith("Counter_AddItem") then
                 Transforms.debugger.contents <- true
-            let function_info = Function.transformFunc context name member_declaration.Args member_declaration.Body generics
+            let function_info = Function.transformFunc ctx name member_declaration.Args member_declaration.Body generics
             Transforms.debugger.contents <- false
             (name, type_sig, function_info)
 // #if !INTERACTIVE

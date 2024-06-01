@@ -2,12 +2,12 @@
 
 open Fable.C.Helpers
 open Fable.C.Transforms
-let write argsTypes fnReturn =
+let write ctx argsTypes fnReturn =
     // let argsTypes = argsTypes |> List.filter (function | Fable.AST.Fable.Unit -> false | _ -> true)
-    let typeName = Print.funcTypeName (transformType [], argsTypes, fnReturn)
-    let returnType = transformType [] fnReturn
+    let typeName = Print.funcTypeName (transformType ctx [], argsTypes, fnReturn)
+    let returnType = transformType ctx [] fnReturn
     let returnTypeName = returnType |> _.ToTypeString()
-    let argsTypes = argsTypes |> List.map (transformType [])
+    let argsTypes = argsTypes |> List.map (transformType ctx [])
     let argsTypesStrings = argsTypes |> List.map _.ToTypeString()
     let paramsText =
         [| for i in 0..(argsTypesStrings.Length - 1) do
@@ -62,12 +62,12 @@ typedef struct {typeName} {{
 """
     {| decl = decl; code = impl |}
 
-let writeClosure captured types __return =
+let writeClosure ctx captured types __return =
     // added_types
     // let captured = captured |> List.filter (function | Fable.AST.Fable.Unit -> false | _ -> true)
     // let types = types |> List.filter (function | Fable.AST.Fable.Unit -> false | _ -> true)
-    let capturedArgsTypes = captured |> List.map (transformType []) |> List.map _.ToTypeString()
-    let invokeArgsTypes = types |> List.map (transformType []) |> List.map _.ToTypeString()
+    let capturedArgsTypes = captured |> List.map (transformType ctx []) |> List.map _.ToTypeString()
+    let invokeArgsTypes = types |> List.map (transformType ctx []) |> List.map _.ToTypeString()
     let invokeParamsText =
         [| for i in 0..(invokeArgsTypes.Length - 1) do $"{invokeArgsTypes[i]} arg_{i}" |]
         |> String.concat ", "
@@ -78,12 +78,12 @@ let writeClosure captured types __return =
         [| for i in 0..capturedArgsTypes.Length - 1 do $"var_{i}" |]
         |> String.concat ", "
     let capturedParamsText =
-        [| for i in 0..capturedArgsTypes.Length - 1 do $"{captured[i] |> transformType [] |> _.ToTypeString()} var_{i}" |]
+        [| for i in 0..capturedArgsTypes.Length - 1 do $"{captured[i] |> transformType ctx [] |> _.ToTypeString()} var_{i}" |]
         |> String.concat ", "
     let variables =
         [|
         for i in 0..capturedArgsTypes.Length - 1 do
-            if requiresTracking [] captured[i] then
+            if requiresTracking ctx [] captured[i] then
                 $"{capturedArgsTypes[i]} var_{i} = ({capturedArgsTypes[i]})this$->capturedArgs[{i}];"
             else
                 $"{capturedArgsTypes[i]} var_{i} = *({capturedArgsTypes[i]}*)this$->capturedArgs[{i}];"
@@ -92,8 +92,8 @@ let writeClosure captured types __return =
     let ctorCapturing =
         [|
         for i in 0..captured.Length - 1 do
-            let t = transformType [] captured[i]
-            if requiresTracking [] captured[i] then
+            let t = transformType ctx [] captured[i]
+            if requiresTracking ctx [] captured[i] then
                 yield $"{t.ToTypeString()} ptr_{i} = var_{i};"
                 yield $"var_{i}->__refcount++;"
             else
@@ -105,8 +105,8 @@ let writeClosure captured types __return =
     let destructorStatements =
         [|
             for i in 0..captured.Length - 1 do
-                if requiresTracking [] captured[i] then
-                    let t = transformType [] captured[i]
+                if requiresTracking ctx [] captured[i] then
+                    let t = transformType ctx [] captured[i]
                     match t with
                     | Fable.C.AST.C.Ptr t ->
                         $"Runtime_end_var_scope(this$->capturedArgs[{i}], {t.ToNameString()}_Destructor);"
@@ -116,12 +116,12 @@ let writeClosure captured types __return =
                     $"free(this$->capturedArgs[{i}]);"
         |]
         |> String.concat "\n    "
-    let returnType = transformType [] __return |> _.ToTypeString()
+    let returnType = transformType ctx [] __return |> _.ToTypeString()
     let ptrType =
         let argsTypesStrings =
             capturedArgsTypes @ invokeArgsTypes
         $"""{returnType} (*)({argsTypesStrings |> String.concat ", "})"""
-    let typeName = Print.closureTypeName (transformType [], captured, types, __return)
+    let typeName = Print.closureTypeName (transformType ctx [], captured, types, __return)
     let decl = $"""
 typedef struct {typeName} {{
     // unsigned char __refcount;

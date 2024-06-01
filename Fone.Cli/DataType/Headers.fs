@@ -10,7 +10,7 @@ open Fable.C.Transforms
 open System.Collections
 
 /// Write the declarations of an individual file in the project
-let writeFilesModuleHeaderStuffs (methods_sb: CompiledOutputBuilder) (sb: CompiledOutputBuilder) (file: string) =
+let writeFilesModuleHeaderStuffs (ctx: C99Compiler.Context) (methods_sb: CompiledOutputBuilder) (sb: CompiledOutputBuilder) (file: string) =
     let fileName = IO.Path.GetFileName(file)
     sb.AppendLine ($"\n/* Contents for {fileName} */") |> ignore
     methods_sb.AppendLine ($"\n/* Contents for {fileName} */") |> ignore
@@ -56,10 +56,10 @@ let writeFilesModuleHeaderStuffs (methods_sb: CompiledOutputBuilder) (sb: Compil
         lastCount <- classDeclarations.Count
     for c in ordered_classes do
         print.printfn $"Writing type %A{c.Entity.FullName}" |> ignore
-        match database.contents.TryGetEntity(c.Entity) with
+        match ctx.db.TryGetEntity(c.Entity) with
         | Some ent ->
             if ent.IsFSharpUnion then
-                let info = Core.writeUnionToBuilder [] sb ent
+                let info = Core.writeUnionToBuilder ctx [] sb ent
                 sb.AppendLine info.decl |> ignore
                 methods_sb.AppendLine info.code |> ignore
                 //sb.AppendLine $"%A{ent}" |> ignore
@@ -68,9 +68,9 @@ let writeFilesModuleHeaderStuffs (methods_sb: CompiledOutputBuilder) (sb: Compil
                     Print.compiledTypeName c.Entity
                 let fields = compiler.GetEntity(c.Entity.FullName).FSharpFields
                 let compiledFields =
-                    fields |> List.map (fun f -> f.Name, (transformType [] f.FieldType))
+                    fields |> List.map (fun f -> f.Name, (transformType ctx [] f.FieldType))
                 // todo: Constructor ?
-                sb.Append(Core.writeStruct [] ent c.Constructor (struct_name, compiledFields))
+                sb.Append(Core.writeStruct ctx [] ent c.Constructor (struct_name, compiledFields))
                 |> ignore
         | None ->
             ()

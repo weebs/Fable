@@ -426,7 +426,7 @@ module Query =
             Some (callee, info, typ, r)
         | _ ->
             None
-    let rec genericTypesUsedByType (generics: (string * Type) list) (com: MyCompiler) (t: Type) : GenericInteraction list =
+    let rec genericTypesUsedByType (database: AST.Type.ICompiler) (generics: (string * Type) list) (com: MyCompiler) (t: Type) : GenericInteraction list =
         match t with
         | DeclaredType(entityRef, genericArgs) when not (entityRef.FullName.StartsWith("Microsoft.FSharp.Core")) && entityRef.FullName = "nativeptr`1" = false ->
             let unresolvedGenerics = generics |> List.map (snd >> (tryResolveType generics)) |> List.filter Option.isNone
@@ -446,13 +446,13 @@ module Query =
                 //     |> List.map _.FieldType
                 let interactionsFromFields =
                     fields
-                    |> List.map (pullGenericTypeUsages generics database.contents)
+                    |> List.map (pullGenericTypeUsages generics database)
                     |> List.collect id
                 if not (ent.FullName.StartsWith("Microsoft.FSharp.Core.PrintfFormat")) && unresolvedGenerics.Length > 0 then
                     (GenericInteraction.Instantiation (entityRef.FullName, List.map (resolveType generics) genericArgs))
-                    :: List.collect (genericTypesUsedByType generics com) fields
+                    :: List.collect (genericTypesUsedByType database generics com) fields
                 else
-                    List.collect (genericTypesUsedByType generics com) fields
+                    List.collect (genericTypesUsedByType database generics com) fields
                 |> fun more -> interactionsFromFields @ more
             | None -> []
         | Array(genericArg, arrayKind) ->
@@ -508,7 +508,8 @@ module Query =
         ) |> ignore
         returnValue
     /// Tests whether the given expression can be expressed as a single expression in C
-    let rec isSimpleExpr (expr: Expr) =
+    let rec isSimpleExpr (database: AST.Type.ICompiler) (expr: Expr) =
+        let isSimpleExpr = isSimpleExpr database
         // let result =
         //     expr |> find (fun expr ->
         //         match expr with
@@ -551,7 +552,7 @@ module Query =
                     values |> List.forall isSimpleExpr
                     //false
                 | NewUnion (values, tag, entRef, genArgs) ->
-                    let ent = database.contents.GetEntity(entRef)
+                    let ent = database.GetEntity(entRef)
                     if ent.IsValueType then List.forall isSimpleExpr values
                     else false
                 | NewAnonymousRecord(values, fieldNames, genArgs, isStruct) ->
@@ -584,7 +585,7 @@ module Query =
         isGenericBody || isGenericClass || hasGenericArgs || memberDeclHasGenericArgs
 
     /// Tests whether the expression must be expressed in a non-expression language (like C) as a series of statements
-    let isComplexExpr = isSimpleExpr >> not
+    let isComplexExpr database = isSimpleExpr database >> not
 
     let getIncludes (expr: Expr) =
         expr |> walkExpr (fun e ->
@@ -678,7 +679,7 @@ let pullGenericTypeUsages generics (com: Type.ICompiler) (t: Type) : GenericInte
 
 // let com: Fable.Compiler ref = ref Unchecked.defaultof<Fable.Compiler>
 // let com: Type.ICompiler ref = ref Unchecked.defaultof<_>
-let database: Type.ICompiler ref = ref Unchecked.defaultof<_>
+// let database: Type.ICompiler ref = ref Unchecked.defaultof<_>
 let closureTypes: (GenericInteraction * Expr) list ref = ref []
 let findGenerics (com: Type.ICompiler) (compiler: MyCompiler) generics expr : (GenericInteraction * Expr) list list =
     walkExpr (fun expr ->
@@ -700,7 +701,7 @@ let findGenerics (com: Type.ICompiler) (compiler: MyCompiler) generics expr : (G
                 | Some fsMember ->
                     [ ((GenericInteraction.MethodCall (fsMember, fsMember.CompiledName, info.GenericArgs |> List.map (resolveType generics))), expr) ]
                 | None ->
-                    log $"Could not find member for ident call:\n {Print.printObj 0 info}\n{Print.printObj 0 expr}"
+                    log $"Could not find member for ident call:\n {Print.printObj com 0 info}\n{Print.printObj com 0 expr}"
                     []
             | Call(Import(importInfo, import_type, import_source_location), callInfo, callType, callSourceLocation) ->
                 match importInfo.Kind with
@@ -773,7 +774,7 @@ let findGenerics (com: Type.ICompiler) (compiler: MyCompiler) generics expr : (G
         fromType @ fromBody
     ) expr |> List.filter (fun l -> l.Length <> 0)
 
-let rec findGenericInstantiations (depth: int) (expr: Expr) : (GenericInteraction * Expr) list =
+let rec findGenericInstantiations (database: AST.Type.ICompiler) (depth: int) (expr: Expr) : (GenericInteraction * Expr) list =
     let o = FSharp.Reflection.FSharpValue.GetUnionFields (expr, expr.GetType())
 //    for i in 1..depth do
 //        printf "    "
@@ -781,7 +782,7 @@ let rec findGenericInstantiations (depth: int) (expr: Expr) : (GenericInteractio
 
     match expr with
     | Call(callee, callInfo, _type, sourceLocationOption) ->
-        let m = callInfo.MemberRef |> Option.map database.contents.GetMember
+        let m = callInfo.MemberRef |> Option.map database.GetMember
         match m with
         | Some m ->
             if callInfo.GenericArgs.Length > 0 then
@@ -792,10 +793,10 @@ let rec findGenericInstantiations (depth: int) (expr: Expr) : (GenericInteractio
         | None ->
             []
     | Sequential exprs ->
-        List.collect (findGenericInstantiations (depth + 1)) exprs
+        List.collect (findGenericInstantiations database (depth + 1)) exprs
     | Let(ident, value, body) ->
         let isGenericValue = Query.isUnresolvedGenericType value.Type
-        let body = (findGenericInstantiations depth value) @ (findGenericInstantiations (depth + 1) body)
+        let body = (findGenericInstantiations database depth value) @ (findGenericInstantiations database (depth + 1) body)
         if isGenericValue then
             match value.Type with
             | DeclaredType(entityRef, genericArgs) ->
@@ -846,8 +847,8 @@ module Display =
         | _ ->
             yield $"{duInfo.Name} {duTupleValuesText}\n"
     }
-    let memberDeclaration (com: Type.ICompiler) (memberDecl: MemberDecl) =
-        let m = com.GetMember(memberDecl.MemberRef)
+    let memberDeclaration (database: Type.ICompiler) (memberDecl: MemberDecl) =
+        let m = database.GetMember(memberDecl.MemberRef)
         printfn $"                                                                                       {memberDecl.Name} @ {m.FullName}"
         match memberDecl.MemberRef with
         | MemberRef(declaringEntity, memberRefInfo) ->
@@ -890,7 +891,7 @@ module Display =
             ()
     //    [ sprintf "%A" memberDecl ]
         let result =
-            findGenericInstantiations 1 memberDecl.Body
+            findGenericInstantiations database 1 memberDecl.Body
             |> List.map (fst >> genericInteraction)
             |> Set.ofSeq
         for i in result do
@@ -926,11 +927,11 @@ type Print =
     static member printUnion (attribute: string) (depth: int) (o: obj) =
         sprintf "%A" o
     #else
-    static member printUnion (attribute: string) (depth: int) (o: obj) =
+    static member printUnion (database: AST.Type.ICompiler) (attribute: string) (depth: int) (o: obj) =
         let (caseInfo, values) = FSharpValue.GetUnionFields(o, o.GetType())
         let valueStrings: string[] =
             (values, caseInfo.GetFields()) ||> Array.map2 (fun value f ->
-                let fieldValue: string = Print.printObj (depth + 1) value
+                let fieldValue: string = Print.printObj database (depth + 1) value
                 $"{f.Name}= " + (Print.trim fieldValue)
             )
         let s: string = System.String.Join(",", valueStrings)
@@ -944,7 +945,7 @@ type Print =
                 sb.Append(repeat ((depth + 1) * 4) " ").Append($"{v},\n") |> ignore
             sb.Append(repeat (depth * 4) " ").Append(")").ToString()
     #endif
-    static member printObjNoRecursion (depth: int) (o: obj) =
+    static member printObjNoRecursion (database: AST.Type.ICompiler) (depth: int) (o: obj) =
         if FSharpType.IsUnion(o.GetType()) then
             let name = o.GetType().Name
             if name = "FSharpList`1" then
@@ -954,25 +955,25 @@ type Print =
                     let rec loop (acc: string list) (node: obj) =
                         let (item, fields) = FSharpValue.GetUnionFields(node, o.GetType())
                         if item.Tag = 1 then
-                            acc @ [ (Print.repeat ((depth + 1) * 4) " ") + ((Print.printObj (depth + 1) fields.[0]) |> Print.trim) ] @ (loop [] fields.[1])
+                            acc @ [ (Print.repeat ((depth + 1) * 4) " ") + ((Print.printObj database (depth + 1) fields.[0]) |> Print.trim) ] @ (loop [] fields.[1])
                         else
                             acc
                     loop [] list
                 let result = String.Join((Print.repeat ((depth + 1) * 4) " ") + "\n", printList o)
                 (Print.indent depth) + $"(* List.{name} *) [\n{result}\n{Print.indent depth}]"
             else
-                (Print.indent depth) + Print.printUnion "" depth o
+                (Print.indent depth) + Print.printUnion database "" depth o
 
         elif FSharpType.IsRecord(o.GetType()) then
             let fields = FSharpValue.GetRecordFields(o)
             let fieldNames = FSharpType.GetRecordFields(o.GetType()) |> Array.map (fun p -> p.Name)
-            let namePairs = Array.map2 (fun field info -> $"{Print.indent (depth + 1)}{info} = {Print.printObj (depth + 1) field |> Print.trim}") fields fieldNames
+            let namePairs = Array.map2 (fun field info -> $"{Print.indent (depth + 1)}{info} = {Print.printObj database (depth + 1) field |> Print.trim}") fields fieldNames
             let s = System.String.Join(";\n", namePairs)
             (Print.indent depth) + $"{o.GetType().Name} {{\n{s}\n{Print.indent depth}}}"
         elif FSharpType.IsTuple(o.GetType()) then
             let fields = FSharpValue.GetTupleFields(o)
             let fieldStrings = fields |> Array.mapi (fun i f ->
-                let item = (Print.printObj (depth + 1) f |> Print.trim)
+                let item = (Print.printObj database (depth + 1) f |> Print.trim)
                 let item =
                     if item.Contains("\n") then
                         let lines = item.Split('\n')
@@ -985,16 +986,16 @@ type Print =
                 let tupleText = String.Join(", ", fieldNames)
                 $"{Print.indent depth} ({tupleText})\n" + System.String.Join("\n", fieldStrings)
             else
-                (Print.indent depth) + System.String.Join(",", fields |> Array.map (Print.printObj depth))
+                (Print.indent depth) + System.String.Join(",", fields |> Array.map (Print.printObj database depth))
         else
             o.ToString()
-    static member printObj (depth: int) (o: obj) =
+    static member printObj (database: AST.Type.ICompiler) (depth: int) (o: obj) =
         try
             let result =
                 match o with
                 | :? Expr as expr ->
         //            let (C.Expr.Emit s) = Print.printComment o
-                    Print.printExpr depth expr
+                    Print.printExpr database depth expr
         //            s
                 | :? Option<SourceLocation> as location ->
                     match location with
@@ -1005,7 +1006,7 @@ type Print =
                     | DeclaredType(entityRef, genericArgs) -> entityRef.DisplayName
                     | _ -> $"%A{_type}".Replace("\n", "; ")
                 | :? Ident as ident ->
-                    $"\"{ident.Name}\": {Print.trim (Print.printObj depth ident.Type)}"
+                    $"\"{ident.Name}\": {Print.trim (Print.printObj database depth ident.Type)}"
                 | :? EntityPath as sourcePath ->
                     match sourcePath with | SourcePath s | AssemblyPath s | CoreAssemblyName s | PrecompiledLib (s, _) ->
                         s.Split(char "/") |> Array.last
@@ -1013,7 +1014,7 @@ type Print =
                     match memberRef with
                     | MemberRef(declaringEntity, memberRefInfo) ->
 
-                        let _member = database.contents.TryGetMember(memberRef) |> Option.map (fun m -> m.Attributes |> Seq.toArray |> Array.map (fun a -> a.Entity.FullName, a.ConstructorArgs))
+                        let _member = database.TryGetMember(memberRef) |> Option.map (fun m -> m.Attributes |> Seq.toArray |> Array.map (fun a -> a.Entity.FullName, a.ConstructorArgs))
                         $"%A{_member}"
                     | GeneratedMemberRef generatedMember ->
                         let declaredBy = generatedMember.Info.DeclaringEntity |> Option.map (fun d -> d.FullName) |> Option.defaultValue ""
@@ -1025,14 +1026,14 @@ type Print =
     //                let args_string = System.String.Join(", ", args |> List.map (Print.printExpr 0))
     //                $"args=({args_string})"
                 | _ ->
-                    Print.printObjNoRecursion depth o
+                    Print.printObjNoRecursion database depth o
             let sb = StringBuilder()
     //        for i in 1..(depth * 4) do
     //            sb.Append(" ") |> ignore
             sb.Append(Print.indent depth).Append(result).ToString()
         with error -> $"{error}"
 
-    static member printExpr depth (expr: Expr) : string =
+    static member printExpr (database: AST.Type.ICompiler) depth (expr: Expr) : string =
         let rec loop depth (expr: Expr) : string =
             let sb = StringBuilder()
             match expr with
@@ -1043,7 +1044,7 @@ type Print =
 //                    sb.AppendLine $"let {ident.Name}: {Print.printObj 0 ident.Type} = \n{loop (depth + 1) value}\n{loop depth body}"
 //                    |> ignore
 //                else
-                sb.AppendLine $"let {ident.Name}: {Print.printObj 0 ident.Type} =\n{loop (depth + 1) value}\n{loop depth body}"
+                sb.AppendLine $"let {ident.Name}: {Print.printObj database 0 ident.Type} =\n{loop (depth + 1) value}\n{loop depth body}"
                 |> ignore
             | Sequential expressions ->
                 for expr in expressions do
@@ -1055,8 +1056,8 @@ type Print =
 //                let caseInfo, values = FSharpValue.GetUnionFields (expr, expr.GetType())
 //                let valueStrings = System.String.Join(", ", values |> Array.map (Print.printObj 0))
 //                sb.Append (Print.printObjNoRecursion 0 expr) |> ignore
-                Print.printUnion
-                    (if depth >= 1 then $" (* {(Print.printObjNoRecursion depth expr.Type |> Print.trim).Split(' ').[0]} *)" else "")
+                Print.printUnion database
+                    (if depth >= 1 then $" (* {(Print.printObjNoRecursion database depth expr.Type |> Print.trim).Split(' ').[0]} *)" else "")
                     depth
                     expr
                 |> (sb.Append >> ignore)
@@ -1075,17 +1076,17 @@ type Print =
 //        let s = Print.printObj 0 expr.Type + s
         s
 //        s.Replace("\n", "\n\n")
-    static member printComment ([<ParamArray>] args: obj[]) : string =
+    static member printComment (database: AST.Type.ICompiler, [<ParamArray>] args: obj[]) : string =
         let mutable s = ""
         for arg in args do
             match arg with
             | :? Expr as expr ->
-                s <- s + (Print.printExpr 0 expr)
+                s <- s + (Print.printExpr database 0 expr)
             | _ ->
                 s <- $"%A{arg}"
         // Environment.StackTrace + "\n" + s
         s
-    static member emitComment (expr: obj) : C.Expr =
+    static member emitComment (database: AST.Type.ICompiler) (expr: obj) : C.Expr =
 //        let mutable s = ""
 //        for arg in args do
 //            match arg with
@@ -1107,7 +1108,7 @@ type Print =
 //            | C.Void -> "(void)(void*)0"
             | C.Ptr (C.Void) | _ -> "(void*)0"
         // C.Expr.Emit $"{value_text}" // /* %A{Print.printComment expr} */"
-        C.Expr.Emit (Print.printComment expr)
+        C.Expr.Emit (Print.printComment (database, expr))
     static member compiledFunctionSignature (name: string, args: (string * C.Type) list, return_type: C.Type) : string =
         let arg_string = System.String.Join(", ", args |> List.map (fun (name, t) -> $"{t.ToTypeString()}"))
         match return_type with
@@ -1201,7 +1202,7 @@ type Print =
             match m.MemberRef with
             | MemberRef(declaringEntity, memberRefInfo) ->
                 let isStruct =
-                    database.contents.TryGetEntityWithName declaringEntity.FullName
+                    com.TryGetEntityWithName declaringEntity.FullName
                     |> Option.map (fst >> _.IsValueType)
                     |> Option.defaultValue false
                 C.EmitType (Print.compiledTypeName(generics |> List.map (snd >> (transformType generics)), declaringEntity))

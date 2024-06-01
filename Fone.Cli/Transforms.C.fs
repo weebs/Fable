@@ -62,9 +62,9 @@ let rec emitEvaluateStringTemplate ctx (com: Type.ICompiler) (generics: (string 
                     | Some ent ->
                         match ent.Attributes |> Seq.tryFind isEmitAttribute with
                         | Some attr -> string attr.ConstructorArgs.[0]
-                        | _ -> Print.compiledTypeName (genericArgs |> List.map (transformType generics), entityRef.FullName)
-                    | _ -> (transformType generics typ).ToTypeString()
-                | _ -> (transformType generics typ).ToTypeString()
+                        | _ -> Print.compiledTypeName (genericArgs |> List.map (transformType ctx generics), entityRef.FullName)
+                    | _ -> (transformType ctx generics typ).ToTypeString()
+                | _ -> (transformType ctx generics typ).ToTypeString()
             | Fable.UnitConstant -> "()"
             | _ -> $"%A{value}" // todo: arrays and unions and records n such
         | Fable.IdentExpr ident ->
@@ -91,9 +91,9 @@ let rec emitEvaluateStringTemplate ctx (com: Type.ICompiler) (generics: (string 
                 | _ ->
                     evaluateValue callee
             else
-                Print.printComment value
+                Print.printComment (ctx.db, value)
         | _ ->
-            Print.printComment value
+            Print.printComment (ctx.db, value)
 
     let mutable s = ""
     for i in 0..(parts.Length - 1) do
@@ -130,13 +130,13 @@ let transformStringTemplate ctx (com: Type.ICompiler) (generics: (string * Type)
             match values.[i - 1] with
             | Ok v ->
 //                        if values.[i - 1].Length = 1 then
-                let c_type: C.Type = transformType generics v.Type
+                let c_type: C.Type = transformType ctx generics v.Type
                 s <- s + c_type.PrintfType
 //                s <- s + (v.Type |> transformType generics).PrintfType
             | Error (Some (v, fields)) ->
                 let printfComponents = System.String.Join("; ", fields |> List.map (fun f ->
-                    $"{f.Name} = {(transformType generics f.FieldType).PrintfType}"))
-                s <- s + $"{(transformType generics v.Type).ToTypeString()} {{ {printfComponents} }}"
+                    $"{f.Name} = {(transformType ctx generics f.FieldType).PrintfType}"))
+                s <- s + $"{(transformType ctx generics v.Type).ToTypeString()} {{ {printfComponents} }}"
             | unmatchedValue ->
                 log $"Issue filling value for string template: %A{unmatchedValue}"
         s <- s + parts.[i]
@@ -156,13 +156,14 @@ let transformStringTemplate ctx (com: Type.ICompiler) (generics: (string * Type)
     // C.Value (C.CStr <| s + "\\n") :: (newValues |> List.map (transformExpr ctx generics))
     C.Value (C.CStr s) :: (newValues |> List.map (transformExpr ctx generics))
 
-let rec transformType (generics: (string * Type) list) (t: Fable.Type) =
+let rec transformType (ctx: C99Compiler.Context) (generics: (string * Type) list) (t: Fable.Type) =
+    let transformType = transformType ctx
     let rec loop (depth: int) (generics: (string * Type) list) (t: Fable.Type) =
         match t with
         | Fable.Type.Option(genericArg, isStruct) ->
             C.Type.UserDefined ($"ValueOption_{(transformType generics genericArg).ToNameString()}" , true, None)
         | Fable.Type.Tuple(genericArgs, isStruct) ->
-            C.Ptr (C.Type.UserDefined (tupleName generics genericArgs, true, None))
+            C.Ptr (C.Type.UserDefined (tupleName ctx generics genericArgs, true, None))
         | Fable.Type.Number (kind, _uom) ->
             match kind with
             | NumberKind.Int8 -> C.Char
@@ -228,7 +229,7 @@ let rec transformType (generics: (string * Type) list) (t: Fable.Type) =
                 | _ -> "struct " + s
                 |> C.EmitType
             | _ ->
-                let ent = database.contents.TryGetEntity(entityRef)
+                let ent = ctx.db.TryGetEntity(entityRef)
                 match ent with
                 | Some ent ->
                     // printfn $"Found entity: {ent.FullName}"
@@ -286,9 +287,9 @@ let rec transformType (generics: (string * Type) list) (t: Fable.Type) =
         | _ -> C.EmitType $"/* %A{t} */"
     loop 0 generics t
 
-let tupleName generics (types: Type list) =
+let tupleName (ctx: C99Compiler.Context) (generics: (string * Type) list) (types: Type list) =
     let typeNames =
-        types |> List.map (fun t -> (transformType generics t).ToNameString().Replace("struct ", ""))
+        types |> List.map (fun t -> (transformType ctx generics t).ToNameString().Replace("struct ", ""))
         |> String.concat "_"
     $"Tuple_{typeNames}"
 let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
@@ -303,12 +304,12 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
         | Float64, (:? double as value) -> C.ValueKind.Double value
         | UInt64, (:? uint64 as value) -> C.ValueKind.UInt64 value
         | Int16, (:? int16 as value) -> C.ValueKind.Int16 value
-        | _ -> C.ValueKind.Emit (Print.printObj 0 value)
+        | _ -> C.ValueKind.Emit (Print.printObj ctx.db 0 value)
     | Fable.NewTuple (values, isStruct) ->
         if isStruct then
-            C.ValueKind.ObjectCompound (tupleName generics (values |> List.map (fun expr -> expr.Type)), values |> List.map (transformExpr ctx generics))
+            C.ValueKind.ObjectCompound (tupleName ctx generics (values |> List.map (fun expr -> expr.Type)), values |> List.map (transformExpr ctx generics))
         else
-            let tplName = tupleName generics (values |> List.map _.Type)
+            let tplName = tupleName ctx generics (values |> List.map _.Type)
             C.Call ($"{tplName}_ctor", values |> List.map (transformExpr ctx generics))
             |> Writer.writeExpression
             |> C.ValueKind.Emit
@@ -317,9 +318,9 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
         // C.ValueKind.Emit <| "/* TODO: Fable.NewOption */" + Print.printObj 0 valueKind
         match exprOption with
         | Some expr ->
-            C.ValueKind.ObjectCompound ("ValueOption_" + (transformType generics ``type``).ToNameString(), [ C.Value (C.ValueKind.Int 1); transformExpr ctx generics expr ])
+            C.ValueKind.ObjectCompound ("ValueOption_" + (transformType ctx generics ``type``).ToNameString(), [ C.Value (C.ValueKind.Int 1); transformExpr ctx generics expr ])
         | None ->
-            C.ValueKind.ObjectCompound ("ValueOption_" + (transformType generics ``type``).ToNameString(), [ C.Value (C.ValueKind.Int 0) ])
+            C.ValueKind.ObjectCompound ("ValueOption_" + (transformType ctx generics ``type``).ToNameString(), [ C.Value (C.ValueKind.Int 0) ])
 
         // match exprOption with
         // | Some value ->
@@ -345,14 +346,14 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
     | Fable.NewUnion(exprs, tag, ref, genArgs) ->
         let ent = ctx.db.TryGetEntity(ref)
         match ent with
-        | None -> C.ValueKind.Emit (Print.printComment valueKind)
+        | None -> C.ValueKind.Emit (Print.printComment (ctx.db, valueKind))
         | Some ent ->
             let generics = genArgs |> List.zip (ent.GenericParameters |> List.map (fun p -> p.Name))
             let caseInfo = ent.UnionCases.[tag]
             let unionName (ent: Entity) =
-                let genArgsTypes = genArgs |> List.map (transformType generics >> _.ToNameString()) |> String.concat "_"
+                let genArgsTypes = genArgs |> List.map (transformType ctx generics >> _.ToNameString()) |> String.concat "_"
                 ent.FullName.Replace($"`{genArgs.Length}", $"__{genArgsTypes}").Replace(".", "_")
-            let union_name = Print.unionName (transformType generics, genArgs, ent)
+            let union_name = Print.unionName (transformType ctx generics, genArgs, ent)
             // todo: this can be done differently
             let inline_acquire_object (type_name: string) (expr: string) (deref: string) =
                 $"({{ {type_name}* p = malloc(sizeof({type_name})); " +
@@ -399,10 +400,10 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
         |> Option.map (fun entity ->
             let fieldInfo =
                 entity.FSharpFields
-                |> List.map (fun f -> (f.Name, transformType generics f.FieldType))
+                |> List.map (fun f -> (f.Name, transformType ctx generics f.FieldType))
             let values = if entity.IsValueType then values else Fable.Value (Fable.ValueKind.NumberConstant (1, NumberKind.Int32, NumberInfo.Empty), None) :: values
             // let t = transformType generics entity.fu}
-            let c_generics = List.map (resolveType generics) _genArgs |> List.map (transformType generics)
+            let c_generics = List.map (resolveType generics) _genArgs |> List.map (transformType ctx generics)
             let structName = Print.compiledTypeName (c_generics, entityRef)
             // let structName =
             //     match entity.Attributes |> Seq.tryFind (fun attr -> attr.Entity.FullName.Contains("EmitType")) with
@@ -424,7 +425,7 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
         )
         |> Option.defaultWith (fun () ->
             printfn $"============= trouble finding entity ref {entityRef.FullName} {entityRef} ================"
-            (C.ValueKind.Emit <| Print.printObj 0 valueKind))
+            (C.ValueKind.Emit <| Print.printObj ctx.db 0 valueKind))
     | Fable.ThisValue ``type`` ->
         match ``type`` with
         | Fable.DeclaredType(_entityRef, _genericArgs) ->
@@ -444,7 +445,7 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
             C.ValueKind.Emit "this$"
     | Fable.NewArray(newKind, typ, kind) ->
 //        C.ValueKind.Array (values |> List.map (transformExpr ctx generics))
-        let array_type_name = (transformType generics typ).ToNameString()
+        let array_type_name = (transformType ctx generics typ).ToNameString()
         match newKind with
         | Fable.ArrayValues values ->
             let unwrapCast value =
@@ -453,14 +454,14 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
             let array_values =
                 values |> List.map (unwrapCast >> transformExpr ctx generics) |> fun c_values -> String.Join(", ", c_values |> List.map (fun c_value -> Writer.writeExpression c_value))
 //            C.ValueKind.Emit <| $"{{{array_values}}}"
-            let tName = (transformType generics typ).ToNameString()
-            let t2 = (transformType generics typ).ToTypeString()
+            let tName = (transformType ctx generics typ).ToNameString()
+            let t2 = (transformType ctx generics typ).ToTypeString()
             let length = $"{values.Length} * sizeof({t2})"
             let arrType = $"struct System_Array__{tName}"
             // let data = $"({(transformType generics typ).ToTypeString()}[]){{ {array_values} }}"
             let data = $"{{ {array_values} }}"
 
-            let t = (transformType generics typ)
+            let t = (transformType ctx generics typ)
             let tName = $"{t.ToNameString()}"
             let argsTxt = values |> List.map (transformExpr ctx generics) |> List.map Writer.writeExpression |> String.concat ", "
             C.ValueKind.Emit $"System_Array__{tName}_ctor({values.Length}, ( ( {t.ToTypeString()}[{values.Length}] ) {{{argsTxt}}} ) )"
@@ -472,7 +473,7 @@ let transformValueKind ctx generics (valueKind: Fable.ValueKind) =
             // C.ValueKind.Emit $"&(struct System_Array__{array_type_name}){{ .data = malloc(sizeof({array_type_name}) * {size_string}), .length = {size_string} }}"
             C.ValueKind.Emit $"System_Array__{array_type_name}_alloc({size_string})"
         | Fable.ArrayFrom expr ->
-            C.ValueKind.Emit $"/* Fable.ArrayFrom expr {Print.printExpr 0 expr} */"
+            C.ValueKind.Emit $"/* Fable.ArrayFrom expr {Print.printExpr ctx.db 0 expr} */"
 //        C.ValueKind.Ptr 1337uL
     | Fable.Null _type ->
         C.ValueKind.Emit $"/* %A{valueKind} */"
@@ -519,13 +520,13 @@ let transformOperation ctx generics (opKind: Fable.OperationKind) (_type: Type) 
 //    | Logical(logicalOperator, left, right) ->
 //        []
     | _ ->
-        C.Expr.Emit $"(void*)0 /* {Print.printObj 0 opKind} */"
+        C.Expr.Emit $"(void*)0 /* {Print.printObj ctx.db 0 opKind} */"
 
-let convertCallArgs generics (callee: Fable.Expr) (callInfo: Fable.CallInfo) =
+let convertCallArgs ctx generics (callee: Fable.Expr) (callInfo: Fable.CallInfo) =
     let callArgs =
         match callInfo.MemberRef with
         | Some memberRef ->
-            match database.contents.TryGetMember(memberRef) with
+            match ctx.db.TryGetMember(memberRef) with
             | Some info ->
                 let hasParamArray = info.CurriedParameterGroups.Length > 0 && info.CurriedParameterGroups.[0].Length > 0 && (List.last info.CurriedParameterGroups.[0]).Attributes |> Seq.exists (fun attribute -> attribute.Entity.FullName = "System.ParamArrayAttribute")
                 ()
@@ -565,7 +566,7 @@ let convertCallArgs generics (callee: Fable.Expr) (callInfo: Fable.CallInfo) =
         debug "%A" callInfo |> ignore
         ()
         // debugger.contents <- false
-    match callInfo.MemberRef |> Option.bind database.contents.TryGetMember with
+    match callInfo.MemberRef |> Option.bind ctx.db.TryGetMember with
     | Some _member ->
         match _member with
         | :? FsMemberFunctionOrValue as fs ->
@@ -617,16 +618,16 @@ let transformCallee ctx (generics: (string * Type) list) (callInfo: CallInfo) (c
                 let genericParams =
                     callInfo.GenericArgs
                     //|> List.filter (fun a -> match a with | Type.Any -> false | _ -> true)
-                    |> List.map (transformType generics)
+                    |> List.map (transformType ctx generics)
                 C.Expr.Emit (Print.compiledMethodName (info.CompiledName, genericParams, memberRef))
             | _ -> C.Expr.Emit (ident.Name)
     | _ ->
         transformExpr ctx generics callee
-let transformClass (generics: (string * Type) list) (com: MyCompiler) (c: ClassDecl) : C.Struct =
+let transformClass ctx (generics: (string * Type) list) (com: MyCompiler) (c: ClassDecl) : C.Struct =
     let ent = com.GetEntity(c.Entity.FullName)
     let fields = ent.FSharpFields
-    let struct_name = Print.compiledTypeName (generics |> List.map (snd >> transformType generics), ent.FullName)
-    { tag = struct_name; members = fields |> List.map (fun f -> transformType generics f.FieldType, f.Name) }
+    let struct_name = Print.compiledTypeName (generics |> List.map (snd >> transformType ctx generics), ent.FullName)
+    { tag = struct_name; members = fields |> List.map (fun f -> transformType ctx generics f.FieldType, f.Name) }
 let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) =
     let isDllImport =
         callInfo.MemberRef
@@ -637,11 +638,11 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
             let genericParams =
                 callInfo.GenericArgs
                 //|> List.filter (fun a -> match a with | Type.Any -> false | _ -> true)
-                |> List.map (transformType generics)
+                |> List.map (transformType ctx generics)
             if isDllImport then
                 memberInfo.CompiledName
             else Print.compiledMethodName (memberInfo.CompiledName, genericParams, memberRef)
-        let callArgs = convertCallArgs generics callee callInfo |> filterCallExprArgs
+        let callArgs = convertCallArgs ctx generics callee callInfo |> filterCallExprArgs
         // Add this$ arg
         match callInfo.ThisArg with
         | Some this ->
@@ -667,7 +668,7 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
             let args, returnType = unwrapLambdaType ident.Type
             // let argTypeNames = args |> List.map (transformType generics >> _.ToNameString()) |> String.concat "_"
             // let fn = $"Func__{argTypeNames}_{returnType |> transformType generics |> _.ToNameString()}_Invoke"
-            let fn = $"{Print.funcTypeName(transformType generics, args, returnType)}_Invoke"
+            let fn = $"{Print.funcTypeName(transformType ctx generics, args, returnType)}_Invoke"
             C.Call (fn, transformExpr ctx generics callee :: (callInfo.Args |> List.map (transformExpr ctx generics)))
             // C.Expr.Emit (Print.printComment callee)
         | _ ->
@@ -692,7 +693,7 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
         | "fromInt32", "BigInt.c" ->
             C.TypeCast (C.Int64, transformExpr ctx generics callInfo.Args[0])
         | "identityHash", "Util.c" ->
-            let t = transformType generics callInfo.Args[0].Type
+            let t = transformType ctx generics callInfo.Args[0].Type
             let e = transformExpr ctx generics callInfo.Args[0]
             // todo: Call GetHashCode for objects / non-primitives
             C.Call ("Hash_hashValue", [ C.Unary (C.Ref, e); C.Call ("sizeof", [ C.Expr.Emit (t.ToTypeString()) ]) ])
@@ -702,8 +703,8 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
             match callInfo.ThisArg.Value.Type with
             | Fable.DeclaredType(entityRef, genericArgs) ->
                 // todo: replace with call to transformType on callInfo.ThisArg
-                let t1 = transformType generics genericArgs[0]
-                let t2 = transformType generics genericArgs[1]
+                let t1 = transformType ctx generics genericArgs[0]
+                let t2 = transformType ctx generics genericArgs[1]
                 let name = $"System_Collections_Generic_Dictionary__{t1.ToNameString()}_{t2.ToNameString()}_Add"
                 C.Call (name, (callInfo.ThisArg.Value :: callInfo.Args) |> List.map (transformExpr ctx generics))
         | "fromNumber", "Long.c" | "fromInteger", "Long.c" -> transformExpr ctx generics callInfo.Args[0]
@@ -716,7 +717,7 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
         // | "AllocHGlobal", "System.Runtime.InteropServices.c" -> C.Call ("malloc", callInfo.Args |> List.map (transformExpr ctx generics))
         // | "FreeHGlobal", "System.Runtime.InteropServices.c" -> C.Call ("free", callInfo.Args |> List.map (transformExpr ctx generics))
         | "fill", "Array.c" ->
-            let t = transformType generics expr.Type.Generics[0]
+            let t = transformType ctx generics expr.Type.Generics[0]
             let tName = t.ToNameString()
             let sizeExpr = transformExpr ctx generics callInfo.Args[2]
             C.Call ($"System_Array__{tName}_alloc", [ sizeExpr ])
@@ -737,10 +738,10 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
             let b = C.Unary (C.Not, C.Binary (C.Eq, C.Expr.Emit $"{e}", C.Expr.Emit "(void*)0"))
             C.Expr.Binary (C.And, a, b)
         | "toString", "Types.c" ->
-            C.Call ((callInfo.Args[0].Type |> transformType generics).ToNameString() + "_toString", [ callInfo.Args[0] |> transformExpr ctx generics ])
+            C.Call ((callInfo.Args[0].Type |> transformType ctx generics).ToNameString() + "_toString", [ callInfo.Args[0] |> transformExpr ctx generics ])
         | "format", "String.c" -> PrintTransform.format ctx transformType transformExpr transformValueKind generics callInfo
         | "OfNativeIntInlined", "Microsoft.FSharp.NativeInterop.NativePtrModule.c" ->
-            C.Expr.TypeCast (transformType generics expr.Type, (transformExpr ctx generics callInfo.Args.[0]))
+            C.Expr.TypeCast (transformType ctx generics expr.Type, (transformExpr ctx generics callInfo.Args.[0]))
         | "WritePointerInlined", "Microsoft.FSharp.NativeInterop.NativePtrModule.c" ->
             C.Expr.Emit $"*({Writer.writeExpression (transformExpr ctx generics callInfo.Args.[0])}) = {Writer.writeExpression (transformExpr ctx generics callInfo.Args.[1])}"
         | "ReadPointerInlined", "Microsoft.FSharp.NativeInterop.NativePtrModule.c" ->
@@ -752,7 +753,7 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
             // | Fable.Number _ -> C.Expr.Value (C.ValueKind.Int 0)
             // | _ ->
                 // C.Expr.Emit $"(void*0) /* Unchecked.defaultOf<%A{``type``}> */" //C.Value (C.ValueKind.Void)
-            let t = transformType generics expr.Type
+            let t = transformType ctx generics expr.Type
             match t with
             | C.Float | C.Double
             | C.Int -> C.Expr.Value (C.ValueKind.Int 0)
@@ -775,14 +776,14 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
 //            C.Expr.ExprAssignment (C.Unary (C.Deref, (C.Expr.Binary (C.Add, transformExpr ctx generics callInfo.Args.[0], transformExpr ctx generics callInfo.Args.[1]))), transformExpr ctx generics callInfo.Args.[2])
         | "ToByRefInlined", "Microsoft.FSharp.NativeInterop.NativePtrModule.c" ->
             transformExpr ctx generics callInfo.Args.[0]
-        | "sizeof", "operators.c" -> C.Expr.Emit <| "sizeof(" + (transformType generics callInfo.GenericArgs.[0]).ToTypeString() + ")"
+        | "sizeof", "operators.c" -> C.Expr.Emit <| "sizeof(" + (transformType ctx generics callInfo.GenericArgs.[0]).ToTypeString() + ")"
         | selector, file when (List.contains "new" callInfo.Tags) ->
             // C.Expr.Emit (Print.printObj 0 callee + "\n" + Print.printObj 2 callInfo)
             C.Expr.Emit "{}"
         | _, _ ->
             match importInfo.Kind with
             | ClassImport entityRef ->
-                Print.emitComment callee
+                Print.emitComment ctx.db callee
             | MemberImport (mem) ->
                 match mem with
                 | MemberRef.MemberRef (memberRef, info) ->
@@ -801,12 +802,12 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
                         // |> fun expr -> log $"%A{expr}"; expr
                 | _ ->
                     // Print.emitComment(importInfo)
-                    Print.emitComment "yo"
+                    Print.emitComment ctx.db "yo"
 //                let compiledName = getCompiledMethodName generics callInfo database.contents memberRef importInfo.Selector
 //                C.Call (compiledName, callInfo.Args |> List.map (transformExpr))
             | _ ->
 
-                C.Expr.Emit <| Print.printComment ("Unmatched import", libraryFile, importInfo, expr)
+                C.Expr.Emit <| Print.printComment (ctx.db, ("Unmatched import", libraryFile, importInfo, expr))
                 //Print.emitComment(importInfo)
     | Get(IdentExpr ident, FieldGet field, ``type``, sourceLocationOption) when ident.Name = "console" && field.Name = "log" ->
         let args = callInfo.Args |> List.map (transformExpr ctx generics)
@@ -825,19 +826,19 @@ let transformCall ctx generics (callInfo: CallInfo) (callee: Expr) (expr: Expr) 
         match callInfo.MemberRef with
         | Some (MemberRef(declaringEntity, memberRefInfo)) ->
             let ent = ctx.db.TryGetEntity(declaringEntity)
-            C.Expr.Emit (Print.printComment expr + "\n" + (ent |> Option.map (fun e -> Print.printComment e) |> Option.defaultValue ""))
+            C.Expr.Emit (Print.printComment (ctx.db, expr) + "\n" + (ent |> Option.map (fun e -> Print.printComment (ctx.db, e)) |> Option.defaultValue ""))
         | _ ->
             match kind with
             | FieldGet info when info.Name = "slice" && expr.Type = Fable.String ->
-                C.Expr.Emit <| Print.printComment (expr, kind)
+                C.Expr.Emit <| Print.printComment (ctx.db, (expr, kind))
             | _ ->
-                C.Expr.Emit <| Print.printComment (expr, kind)
+                C.Expr.Emit <| Print.printComment (ctx.db, (expr, kind))
         //Print.emitComment (expr, kind)
 //        C.Expr.Emit <| $"// %A{expr} %A{kind}".Replace("\n", "")
     | _ ->
-        C.Expr.Emit $"(void*)0 /* {Print.printComment expr} */"
-let flattenExpr (expr: Expr) : Expr =
-    if Query.isSimpleExpr expr then expr
+        C.Expr.Emit $"(void*)0 /* {Print.printComment (ctx.db, expr)} */"
+let flattenExpr database (expr: Expr) : Expr =
+    if Query.isSimpleExpr database expr then expr
     else
         match expr with
         | Fable.Call(callee, callInfo, ``type``, sourceLocationOption) ->
@@ -855,7 +856,7 @@ let flattenExpr (expr: Expr) : Expr =
                         IsCompilerGenerated = true
                         Range = arg.Range
                     }
-                    Fable.Let (ident, flattenExpr arg, loop (ident :: idents) args)
+                    Fable.Let (ident, flattenExpr database arg, loop (ident :: idents) args)
             loop [] callInfo.Args
         | expr -> expr
 let inline tryAs (f: 'a -> 't) (t: 't) : 'a option =
@@ -890,27 +891,27 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
             | Fable.UnresolvedExpr.UnresolvedReplaceCall (thisArg, args, info, attached) ->
                 match info.DeclaringEntityFullName, info.CompiledName with
                 | "Microsoft.FSharp.Core.Operators", "SizeOf" ->
-                    C.Expr.Call ("sizeof", [ C.Expr.Emit <| (transformType generics info.GenericArgs.[0]).ToTypeString() ])
+                    C.Expr.Call ("sizeof", [ C.Expr.Emit <| (transformType ctx generics info.GenericArgs.[0]).ToTypeString() ])
                 | _ ->
-                    Print.emitComment expr
+                    Print.emitComment ctx.db expr
             | _ ->
-                Print.emitComment expr
+                Print.emitComment ctx.db expr
         | Import(importInfo, ``type``, sourceLocationOption) ->
             match importInfo.Selector with
             | "toConsole" -> C.Expr.Emit "printf"
-            | _ -> Print.emitComment expr // C.Expr.Emit importInfo.Selector
+            | _ -> Print.emitComment ctx.db expr // C.Expr.Emit importInfo.Selector
         | IdentExpr ident ->
             match isArgValueThis generics ctx.db ident with
             | Some ident -> C.Ident (ident, true)
             | _ ->
                 if isByRefType ident.Type
                 then C.Unary (C.UnaryOp.Deref, C.Ident (ident, true)) // todo : isValueType
-                else C.Ident (ident, isValueType ident.Type)
+                else C.Ident (ident, isValueType ctx ident.Type)
         | Operation(operationKind, tags, ``type``, _sourceLocationOption) ->
             transformOperation ctx generics operationKind ``type``
         | Call(callee, callInfo, _type, _sourceLocationOption) ->
             // todo: transforming calls with complex args
-            if not (Query.isSimpleExpr expr) then
+            if not (Query.isSimpleExpr ctx.db expr) then
                 transformCall ctx generics callInfo callee expr
             else
                 transformCall ctx generics callInfo callee expr
@@ -927,7 +928,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
         | Value(valueKind, _sourceLocationOption) ->
             C.Value <| transformValueKind ctx generics valueKind
         | Test(expr1, testKind, sourceLocationOption) ->
-            let comment = Print.emitComment expr
+            let comment = Print.emitComment ctx.db expr
             match testKind with
             | ListTest isCons -> comment
             | OptionTest isSome ->
@@ -1008,7 +1009,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
             | ExprGet getExpr ->
                 match e.Type with
                 | Array(genericArg, arrayKind) ->
-                    let t = (transformType generics genericArg)
+                    let t = (transformType ctx generics genericArg)
                     let genericParamName = t.ToNameString()
                     let name =
                         match arrayKind with
@@ -1030,7 +1031,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                     match e.Type with
                     | Tuple(genericArgs, isStruct) ->
                         if isStruct then C.MemberAccess else C.DerefMemberAccess
-                    | _ -> Print.emitComment
+                    | _ -> Print.emitComment ctx.db
                 case (transformExpr ctx generics e, $"value_{index}")
             | UnionField fieldInfo ->
                 let ent = ctx.db.GetEntity(fieldInfo.Entity)
@@ -1049,7 +1050,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                 C.MemberAccess (transformExpr ctx generics e, $"%A{a}")
         | Emit(emitInfo, _type, _sourceLocationOption) ->
     //        transformEmit generics emitInfo
-            let emitInfo = { emitInfo with CallInfo = { emitInfo.CallInfo with Args = convertCallArgs generics expr emitInfo.CallInfo } }
+            let emitInfo = { emitInfo with CallInfo = { emitInfo.CallInfo with Args = convertCallArgs ctx generics expr emitInfo.CallInfo } }
             match emitInfo.Macro with
             | "IsValueType" ->
                 match tryResolveType generics emitInfo.CallInfo.GenericArgs.[0] with
@@ -1068,7 +1069,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                 match tryResolveType generics emitInfo.CallInfo.GenericArgs.[0] with
                 | Some (DeclaredType(entityRef, genericArgs)) ->
     //                C.Emit $"&{}"
-                    let c_types = List.map (transformType generics) genericArgs
+                    let c_types = List.map (transformType ctx generics) genericArgs
                     C.Expr.Emit $"&{Print.finalizerName (c_types, entityRef)}"
     //                C.Call (Print.finalizerName (List.map (transformType generics) genericArgs, entityRef), [ transformExpr ctx generics emitInfo.CallInfo.Args.[0] ])
                 | _ -> C.Expr.Emit $"/* %A{expr} */"
@@ -1139,15 +1140,15 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
     //            C.Call (emitInfo.CallInfo.GenericArgs)
                 match emitInfo.CallInfo.GenericArgs.[0] with
                 | DeclaredType(entityRef, genericArgs) ->
-                    let typeName = Print.compiledTypeName ((List.map (transformType generics) genericArgs), entityRef)
+                    let typeName = Print.compiledTypeName ((List.map (transformType ctx generics) genericArgs), entityRef)
                     C.Expr.Emit typeName
                 | _ ->
-                    C.Expr.Emit ((transformType generics emitInfo.CallInfo.GenericArgs.[0]).ToNameString())
+                    C.Expr.Emit ((transformType ctx generics emitInfo.CallInfo.GenericArgs.[0]).ToNameString())
             | "____finalize" ->
     //            C.Call (emitInfo.CallInfo.GenericArgs)
                 match emitInfo.CallInfo.GenericArgs.[0] with
                 | DeclaredType(entityRef, genericArgs) ->
-                    C.Call (Print.finalizerName (List.map (transformType generics) genericArgs, entityRef), [ transformExpr ctx generics emitInfo.CallInfo.Args.[0] ])
+                    C.Call (Print.finalizerName (List.map (transformType ctx generics) genericArgs, entityRef), [ transformExpr ctx generics emitInfo.CallInfo.Args.[0] ])
                 | _ -> C.Expr.Emit $"/* %A{expr} */"
             | "____create_handle" ->
                 C.Call ("Runtime_create_handle", [ transformExpr ctx generics emitInfo.CallInfo.Args.[0]; transformExpr ctx generics emitInfo.CallInfo.Args.[1] ])
@@ -1162,11 +1163,11 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
             | "____deref_as_nativeptr" ->
                 C.Expr.Unary (C.Ref, transformExpr ctx generics emitInfo.CallInfo.Args.[0])
             | "cast" ->
-                printfn $"{Print.printExpr 0 expr}"
-                let target = (transformType generics emitInfo.CallInfo.GenericArgs.[1])
-                printfn $"Target = {Print.printObj 0 target}"
+                printfn $"{Print.printExpr ctx.db 0 expr}"
+                let target = (transformType ctx generics emitInfo.CallInfo.GenericArgs.[1])
+                printfn $"Target = {Print.printObj ctx.db 0 target}"
                 let src = transformExpr ctx generics emitInfo.CallInfo.Args.[0]
-                printfn $"Src = {Print.printObj 0 src}"
+                printfn $"Src = {Print.printObj ctx.db 0 src}"
                 C.Expr.TypeCast (target, src)
             | "emit" ->
                 match emitInfo.CallInfo.Args.[0] with
@@ -1176,7 +1177,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                     let compiler = ctx.db
                     C.Expr.Emit (emitEvaluateStringTemplate ctx compiler generics parts values)
                 | _ ->
-                    Print.emitComment expr
+                    Print.emitComment ctx.db expr
             | _ ->
                 match emitInfo.CallInfo.MemberRef with
                 | Some (MemberRef(declaringEntity, memberRefInfo)) ->
@@ -1195,7 +1196,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                     match ctx.db.TryGetMember(emitInfo.CallInfo.MemberRef.Value) with
                     | Some info ->
                         let hasParamArray = info.CurriedParameterGroups.Length > 0 && info.CurriedParameterGroups.[0].Length > 0 && (List.last info.CurriedParameterGroups.[0]).Attributes |> Seq.exists (fun attribute -> attribute.Entity.FullName = "System.ParamArrayAttribute")
-                        let emitInfo = { emitInfo with CallInfo = { emitInfo.CallInfo with Args = (convertCallArgs generics expr emitInfo.CallInfo) } }
+                        let emitInfo = { emitInfo with CallInfo = { emitInfo.CallInfo with Args = (convertCallArgs ctx generics expr emitInfo.CallInfo) } }
         //                let hasParamArray = hasParamArray info
         //                if hasParamArray then
                         if emitInfo.CallInfo.Args.Length > 0 then
@@ -1208,7 +1209,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                                     emitInfo.CallInfo.Args
                             C.Call (emitInfo.Macro, args |> filterCallExprArgs |> List.map (transformExpr ctx generics))
                         else
-                            Print.emitComment emitInfo
+                            Print.emitComment ctx.db emitInfo
                     | _ ->
                         // Print.emitComment emitInfo
                         C.Call (emitInfo.Macro, emitInfo.CallInfo.Args |> List.map (transformExpr ctx generics))
@@ -1230,7 +1231,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
         | TypeCast(expr, ``type``) ->
     //        match expr.Type, ``type`` with
     //        | Number(NumberKind.Int32, numberInfo), Number(NumberKind.UInt8) -> C.Expr.Emit $"(() & 0xFF)"
-            C.TypeCast (transformType generics ``type``, transformExpr ctx generics expr)
+            C.TypeCast (transformType ctx generics ``type``, transformExpr ctx generics expr)
             // C.Expr.Emit (Print.printExpr 0 expr + "\n" + Print.printObj 0 ``type``)
         | Let(_ident, _value, body) ->
             // todo: this needs to be able to return additional pre-pend statements
@@ -1257,7 +1258,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                             let replacedExpr = Fable.Transforms.AST.visit f lambdaExpr
                             transformExpr ctx generics replacedExpr
 
-                    let t = transformType generics lambdaExpr.Type
+                    let t = transformType ctx generics lambdaExpr.Type
                     match t with
                     | C.Ptr (C.UserDefined (name, _, _)) ->
                         C.Call ($"{name}_Invoke", [
@@ -1267,7 +1268,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                 | Call(callee, callInfo, ``type``, sourceLocationOption) ->
                     match exprToApply.Type with
                     | LambdaType _ ->
-                        let t = transformType generics exprToApply.Type
+                        let t = transformType ctx generics exprToApply.Type
                         let result = transformExpr ctx generics exprToApply
                         match t with
                         | C.Ptr (C.UserDefined (name, _, _)) ->
@@ -1276,7 +1277,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                                 yield! List.tail args |> List.map (transformExpr ctx generics)
                             ])
                     | _ ->
-                        Print.emitComment expr
+                        Print.emitComment ctx.db expr
                 | _else ->
                     transformExpr ctx generics _else
             // loop (Lambda (arg, lambdaExpr, name)) [] args
@@ -1308,13 +1309,13 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                 // todo: If it does, then we need to invoke it correctly instead
                 // of passing args like a normal C function call
                 let invokeArgs = transformExpr ctx generics applied :: (exprs |> List.map (transformExpr ctx generics))
-                let typeName = Print.funcTypeName (transformType generics, appliedArgTypes, appliedReturnType)
+                let typeName = Print.funcTypeName (transformType ctx generics, appliedArgTypes, appliedReturnType)
                 C.Call ($"{typeName}_Invoke", invokeArgs)
             else
                 let captured = applied :: exprs
                 let args = appliedArgTypes |> List.skip exprs.Length
-                let closureName = Print.closureTypeName (transformType generics, captured |> List.map _.Type, args, appliedReturnType)
-                let funcTypeName = Print.funcTypeName (transformType generics, args, appliedReturnType)
+                let closureName = Print.closureTypeName (transformType ctx generics, captured |> List.map _.Type, args, appliedReturnType)
+                let funcTypeName = Print.funcTypeName (transformType ctx generics, args, appliedReturnType)
                 let name = getAnonymousFunctionName ctx ctx.currentFile expr
                 let functionName = C.Expr.Emit ("(void (*)(void*))" + name)
                 // todo
@@ -1337,14 +1338,14 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                 ]
                 C.BlockExpr [
                     C.Statement.Expression createFunc
-                    C.Statement.Expression (Print.emitComment expr)
+                    C.Statement.Expression (Print.emitComment ctx.db expr)
                 ]
                 createFunc
         | Delegate(idents, body, stringOption, tags) ->
             if not (Query.isClosure ctx.idents body) then
                 let value = transformDelegate ctx generics expr idents body
                 let args, returnType = (idents |> List.map _.Type), body.Type
-                let typeName = Print.funcTypeName (transformType generics, args, returnType)
+                let typeName = Print.funcTypeName (transformType ctx generics, args, returnType)
                 let name = getAnonymousFunctionName ctx ctx.currentFile body
                 C.Call ($"{typeName}_ctor", [ C.Value (C.ValueKind.Int 0); value; C.Expr.Emit "(void*)0"; C.Expr.Emit "(void*)0" ])
             else
@@ -1367,8 +1368,8 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                     )
                     |> Seq.map IdentExpr
                     |> Seq.map (transformExpr ctx generics)
-                let closureName = Print.closureTypeName (transformType generics, identsCaptured |> Seq.map _.Value.Type |> Seq.toList, argTypes, returnType)
-                let funcTypeName = Print.funcTypeName (transformType generics, argTypes, returnType)
+                let closureName = Print.closureTypeName (transformType ctx generics, identsCaptured |> Seq.map _.Value.Type |> Seq.toList, argTypes, returnType)
+                let funcTypeName = Print.funcTypeName (transformType ctx generics, argTypes, returnType)
 
                 let functionName = C.Expr.Emit ("(void (*)(void*))" + name)
 
@@ -1404,7 +1405,7 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                 C.Expr.Emit name
                 let value = transformDelegate ctx generics expr args body
                 let args, returnType = (args |> List.map _.Type), body.Type
-                let typeName = Print.funcTypeName (transformType generics, args, returnType)
+                let typeName = Print.funcTypeName (transformType ctx generics, args, returnType)
                 let name = getAnonymousFunctionName ctx ctx.currentFile body
                 C.Call ($"{typeName}_ctor", [ C.Value (C.ValueKind.Int 0); value; C.Expr.Emit "(void*)0"; C.Expr.Emit "(void*)0" ])
             else
@@ -1432,13 +1433,13 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                     idents
                     |> Seq.map IdentExpr
                     |> Seq.map (transformExpr ctx generics)
-                let closureName = Print.closureTypeName(transformType generics, idents |> Seq.toList |> List.map _.Type, argTypes, _return)
+                let closureName = Print.closureTypeName(transformType ctx generics, idents |> Seq.toList |> List.map _.Type, argTypes, _return)
                 let functionName = C.Expr.Emit ("(void (*)(void*))" + name)
                 let createClosure =
                     C.Call ($"{closureName}_ctor", [ yield! capturedValues; functionName ])
                 let createFunc =
                     C.Call (
-                        $"{Print.funcTypeName (transformType generics, argTypes, _return)}_ctor", [
+                        $"{Print.funcTypeName (transformType ctx generics, argTypes, _return)}_ctor", [
                             C.Value (C.ValueKind.Int 1)
                             C.Expr.Emit $"{closureName}_Invoke"
                             createClosure
@@ -1454,11 +1455,11 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
             if members.Length = 0 then
                 C.Expr.Value C.ValueKind.Void
             else
-                Print.emitComment expr
+                Print.emitComment ctx.db expr
         | _ ->
-            Print.emitComment expr
+            Print.emitComment ctx.db expr
     with e ->
-        Print.emitComment (string e)
+        Print.emitComment ctx.db (string e)
 
 let getAnonymousFunctionName (ctx: Context) (filename: string) (expr: Expr) =
     let idents =
@@ -1524,7 +1525,7 @@ let transformDelegate (ctx: Context) (generics: (string * Type) list) (expr: Exp
                 | Some range ->
                     C.Expr.Emit (getAnonymousFunctionName ctx ctx.currentFile expr)
 //                    C.Expr.Emit $"/* emit_debug */ {function_name}_{memberRefInfo.CompiledName}"
-                | _ -> C.Expr.Emit <| $"/* couldn't find range for delegate */" + Print.printComment expr
+                | _ -> C.Expr.Emit <| $"/* couldn't find range for delegate */" + Print.printComment (ctx.db, expr)
 //                transformExpr ctx generics callee
         | _ ->
             if Query.isEmptyDelegate idents body then
@@ -1532,46 +1533,46 @@ let transformDelegate (ctx: Context) (generics: (string * Type) list) (expr: Exp
             else
                 match expr.Range with
                 | Some range -> C.Expr.Emit (getAnonymousFunctionName ctx ctx.currentFile expr)
-                | None -> Print.emitComment expr
+                | None -> Print.emitComment ctx.db expr
     | CurriedApply(applied, exprs, ``type``, sourceLocationOption) ->
         if Query.isEmptyDelegate idents body then
             transformExpr ctx generics applied
         else
             // todo: we can tell here that the applied call calls a function that returns a function itself rather
             // todo: a fullied applied fn
-            let info = Print.emitComment expr
+            let info = Print.emitComment ctx.db expr
             C.Expr.Emit (getAnonymousFunctionName ctx ctx.currentFile expr)
     | _ ->
         for i in 1..10 do
             printfn "Checking lambda in transformDelegate (third case)"
         C.Expr.Emit (getAnonymousFunctionName ctx ctx.currentFile expr)
 
-let rec getExprType generics (e: Expr) : C.Type =
+let rec getExprType ctx generics (e: Expr) : C.Type =
     match e with
-    | Let(ident, value, body) -> getExprType generics body
-    | Value(valueKind, sourceLocationOption) -> transformType generics valueKind.Type
-    | IdentExpr ident -> transformType generics ident.Type
-    | Sequential exprs -> transformType generics (List.last exprs).Type
+    | Let(ident, value, body) -> getExprType ctx generics body
+    | Value(valueKind, sourceLocationOption) -> transformType ctx generics valueKind.Type
+    | IdentExpr ident -> transformType ctx generics ident.Type
+    | Sequential exprs -> transformType ctx generics (List.last exprs).Type
     | _ -> C.Void
 
 let transformNewRecord ctx generics expr =
     match expr with
     | Value(NewRecord (values, entityRef, genArgs), sourceLocationOption) ->
-        if values |> List.forall Query.isSimpleExpr then
+        if values |> List.forall (Query.isSimpleExpr ctx.db) then
             [ C.Statement.Expression <| transformExpr ctx generics expr ]
         else
             let values = [
                 for v in values do
-                    if Query.isComplexExpr v then
+                    if Query.isComplexExpr ctx.db v then
                         let items: C.Statement list = transformMember ctx generics v
                         let id = Guid.NewGuid().ToString()
                         // Since c declarations can't start with a number, find the first char that isn't a number or _
                         let name = id.Replace("-", "_").Substring(id |> Seq.tryFindIndex (fun c -> "0123456789_".Contains(string c) = false) |> Option.defaultValue 0)
-                        let _type = getExprType generics v
+                        let _type = getExprType ctx generics v
                         let value = C.DeclarationAssignment.StatementAssignment << C.Block <| items
                         let ident = C.Ident ({
                             Name = name; Type = v.Type; IsMutable = false; IsThisArgument = false; IsCompilerGenerated = false; Range = None;
-                        }, (isValueType v.Type))
+                        }, (isValueType ctx v.Type))
                         yield (ident, [ C.Declaration { _type = _type; name = name; value = value; requiresTracking = failwith "todo" } ])
                     else
                         yield (transformExpr ctx generics v, [])
@@ -1581,7 +1582,7 @@ let transformNewRecord ctx generics expr =
             let entity = ctx.db.GetEntity(entityRef)
             let fieldInfo =
                 entity.FSharpFields
-                |> List.map (fun f -> (f.Name, transformType generics f.FieldType))
+                |> List.map (fun f -> (f.Name, transformType ctx generics f.FieldType))
             toReturn @ [ C.Statement.Expression << C.Value << C.Compound <|
                           ((values |> List.map fst),
                           entity,
@@ -1592,12 +1593,12 @@ let identsToWatch =
         //"mythread"
         //"l2"
     ]
-let rec requiresTracking generics t =
+let rec requiresTracking ctx generics t =
     match t with
     | DeclaredType(ref, genericArgs) when ref.FullName.StartsWith "Microsoft.FSharp.Core.byref" ->
-        requiresTracking generics genericArgs[0]
+        requiresTracking ctx generics genericArgs[0]
     | DeclaredType(entityRef, genericArgs) ->
-        match database.contents.TryGetEntity(entityRef) with
+        match ctx.db.TryGetEntity(entityRef) with
         | Some e when e.IsValueType -> false
         | Some e ->
             log $"Requires Tracking: {e.FullName}"
@@ -1611,14 +1612,14 @@ let rec requiresTracking generics t =
     | List _ -> true
     | Any -> true
     | Tuple(genericArgs, isStruct) ->
-        not isStruct || (List.exists (requiresTracking generics) genericArgs)
+        not isStruct || (List.exists (requiresTracking ctx generics) genericArgs)
     | GenericParam(name, isMeasure, constraints) ->
         let resolved = resolveType generics t
         if resolved = t then
             false
         else
-            requiresTracking generics (resolveType generics t)
-    | AnonymousRecordType(fieldNames, genericArgs, isStruct) -> not isStruct || (List.exists (requiresTracking generics) genericArgs)
+            requiresTracking ctx generics (resolveType generics t)
+    | AnonymousRecordType(fieldNames, genericArgs, isStruct) -> not isStruct || (List.exists (requiresTracking ctx generics) genericArgs)
     | Boolean -> false
     | Char -> false
     | LambdaType _ -> true
@@ -1703,21 +1704,21 @@ let transformLet ctx generics (ident: Ident) value (body: Expr) =
         if Query.exprIsDefaultOf value then
             C.Default
         else
-            match Query.isSimpleExpr value with
+            match Query.isSimpleExpr ctx.db value with
             | true ->
                 C.ExprAssignment (transformExpr ctx generics value)
             | false ->
                 match value with
                 | Delegate(idents, body, stringOption, tags) ->
                     // todo: emit anonymous_fn
-                    C.ExprAssignment (Print.emitComment (Let (ident, value, body)))
+                    C.ExprAssignment (Print.emitComment ctx.db (Let (ident, value, body)))
                 | _ ->
                     // todo declare everything before
                     // For more complex assignment, we have to declare the type and then initialize it in a code block
                     C.StatementAssignment << C.Block <| (transformMember ctx generics value)
     let variable_type =
         // printfn $"Variable type: %A{ident.Type}"
-        match transformType generics ident.Type with
+        match transformType ctx generics ident.Type with
         | C.Void -> C.Ptr C.Void
         | t -> t
     let assignment =
@@ -1731,7 +1732,7 @@ let transformLet ctx generics (ident: Ident) value (body: Expr) =
             C.DeclarationInfo.value =
                 c_value
             C.DeclarationInfo.requiresTracking =
-                requiresTracking generics value.Type
+                requiresTracking ctx generics value.Type
         }
     // C.Call("malloc", [ C.Call ("sizeof", [ variable_type ]) ])
     compiler.AddIdent (ident, value)
@@ -1739,7 +1740,7 @@ let transformLet ctx generics (ident: Ident) value (body: Expr) =
         let bodyType = body.Type
         let body = transformMember ctx generics body
         let postFollowing =
-            if requiresTracking generics value.Type then
+            if requiresTracking ctx generics value.Type then
                 // log $"================ TODO: Create macro for Runtime_end_var_scope, simpler than handling it in this section ===================="
                 // todo: end_var_scope
                 let name =
@@ -1763,7 +1764,7 @@ let transformLet ctx generics (ident: Ident) value (body: Expr) =
     compiler.RemoveIdent ident |> ignore
     let postAssignment =
         // todo: Why Query.isSimpleExpr ?
-        if requiresTracking generics value.Type && Query.isSimpleExpr value then
+        if requiresTracking ctx generics value.Type && Query.isSimpleExpr ctx.db value then
             // todo: Runtime_track_var
             // [ C.Expression <| C.Call ("Runtime_track_var", [ C.TypeCast (C.EmitType "void**", C.Expr.Emit $"&{ident.Name}")]) ]
             // [ C.Expression <| C.Call ("Runtime_inc_count", [ C.TypeCast (C.EmitType "void*", C.Expr.Ident (ident, false)) ]) ]
@@ -1795,10 +1796,10 @@ let transformLet ctx generics (ident: Ident) value (body: Expr) =
     assignment @ following // @ postFollowing
     // Print.emitComment value
 
-let isValueType (t: Type) =
+let isValueType ctx (t: Type) =
     match t with
     | DeclaredType(entityRef, genericArgs) ->
-        (database.contents.TryGetEntity(entityRef) |> Option.map (fun e -> e.IsValueType) |> Option.defaultValue true)
+        (ctx.db.TryGetEntity(entityRef) |> Option.map (fun e -> e.IsValueType) |> Option.defaultValue true)
     | Array(genericArg, arrayKind) -> false
     | _ -> true
 let wrapStatementsWithThreadContextUpdate (statements: C.Statement list) =
@@ -1960,7 +1961,7 @@ let inline third (a: 'a * 'b * 'c) =
 let debugger = ref false
 let transformMember ctx (generics: (string * Type) list) (body: Expr) =
     let body = body |> applyTransformations
-    let body = flattenExpr body
+    let body = flattenExpr ctx.db body
     let rec loop generics body =
         // Making sure that nothing inside of the loop calls the outer function
         let transformMember = null
@@ -1975,19 +1976,19 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
                 ()
             | _ -> ()
             transformLet ctx generics ident value letBody
-        | IdentExpr ident -> [ C.Statement.Expression <| C.Ident (ident, isValueType ident.Type) ]
+        | IdentExpr ident -> [ C.Statement.Expression <| C.Ident (ident, isValueType ctx ident.Type) ]
         | DecisionTree(expr1, targets) ->
             transformDecisionTreeConditionExpr ctx generics expr1 targets
         | WhileLoop(guard, expr, _sourceLocationOption) ->
             wrapStatementsWithThreadContextUpdate [ C.WhileLoop (transformExpr ctx generics guard, loop generics expr) ]
         | ForLoop(ident, start, limit, expr, isUp, _sourceLocationOption) ->
             let condition =
-                C.Binary ((if isUp then C.LessOrEqual else C.GreaterOrEqual), C.Ident (ident, isValueType ident.Type), transformExpr ctx generics limit)
+                C.Binary ((if isUp then C.LessOrEqual else C.GreaterOrEqual), C.Ident (ident, isValueType ctx ident.Type), transformExpr ctx generics limit)
             let each =
-                C.Assignment (C.Ident (ident, isValueType ident.Type), C.Binary (C.Add, C.Ident (ident, isValueType ident.Type), C.Value (C.ValueKind.Int (if isUp then 1 else -1))))
+                C.Assignment (C.Ident (ident, isValueType ctx ident.Type), C.Binary (C.Add, C.Ident (ident, isValueType ctx ident.Type), C.Value (C.ValueKind.Int (if isUp then 1 else -1))))
             let declaration: C.DeclarationInfo =
                 {
-                    _type = transformType generics ident.Type
+                    _type = transformType ctx generics ident.Type
                     name = ident.Name
                     value = C.ExprAssignment (transformExpr ctx generics start)
                     requiresTracking = false
@@ -2031,10 +2032,10 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
                         //     C.DerefMemberAccess
                         | _ ->
                             C.MemberAccess
-                    if requiresTracking generics fixedValue.Type then
+                    if requiresTracking ctx generics fixedValue.Type then
                         let e = transformExpr ctx generics fixedValue
                         let _member = (accessType ((transformExpr ctx generics expr), fieldName))
-                        let (C.Ptr valueType) = transformType generics fixedValue.Type
+                        let (C.Ptr valueType) = transformType ctx generics fixedValue.Type
                         // todo: reassign
                         // [ C.Emit $"Runtime_swap_value((void**)&{Compiler.writeExpression _member}, {Compiler.writeExpression e});" ]
                         [
@@ -2051,7 +2052,7 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
                     match expr.Type with
                     | Array (_genericArg, _kind) -> //[ C.Assignment ((C.IndexedAccess (transformExpr ctx generics expr, transformExpr ctx generics setExpr)),
                                                                                     //transformExpr ctx generics value) ]
-                        let genericType = (transformType generics _genericArg).ToNameString()
+                        let genericType = (transformType ctx generics _genericArg).ToNameString()
                         [
                           C.Statement.Expression (C.Call ($"System_Array__{genericType}_set_Item", [
                             transformExpr ctx generics expr
@@ -2064,14 +2065,14 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
                     let e = transformExpr ctx generics expr
                     let _value = transformExpr ctx generics value
                     [
-                        if requiresTracking generics value.Type then
+                        if requiresTracking ctx generics value.Type then
                             C.Emit $"Runtime_reassign_var((void**)&{Writer.writeExpression e}, {Writer.writeExpression _value});"
                         else
                             C.Assignment (e, _value);
                     ]
             result
         | IfThenElse(guardExpr, thenExpr, elseExpr, _sourceLocationOption) ->
-            if Query.isSimpleExpr guardExpr then
+            if Query.isSimpleExpr ctx.db guardExpr then
                 let guard = transformExpr ctx generics guardExpr
                 match guard with
                 | C.Value (C.ValueKind.Bool true) ->
@@ -2110,7 +2111,7 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
             | _ -> [ C.Statement.Expression <| transformExpr ctx generics body ]
         | _ -> [ C.Statement.Expression <| transformExpr ctx generics body ]
         |> fun result ->
-            let useSourceMap = true
+            let useSourceMap = false
             let range =
                 match body.Range with
                 | Some _ -> body.Range
@@ -2128,14 +2129,14 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
             | _ -> result
     loop generics body
 
-let transformMemberDeclArgs generics (args: Ident list) : Ident list * C.Statement list =
+let transformMemberDeclArgs ctx generics (args: Ident list) : Ident list * C.Statement list =
     let args_and_statements =
         args |> List.map (fun arg ->
             match arg.Type with
             | Fable.DeclaredType(entityRef, genericArgs) when entityRef.FullName = "Microsoft.FSharp.Core.byref`2" && arg.IsThisArgument ->
                 match (tryResolveType generics genericArgs.[0]) with
                 | Some (DeclaredType(entityRef, _)) ->
-                    match database.contents.TryGetEntity(entityRef) with
+                    match ctx.db.TryGetEntity(entityRef) with
                     | Some ent when ent.IsValueType ->
                         arg, []
                         // { arg with Name = "this_value"; Type = resolveType generics genericArgs.[0] }, [ C.Declaration {

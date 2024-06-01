@@ -9,9 +9,9 @@ type Generics = (string * Type) list
 let pullArgAndType ctx transformType transformExpr transformValueKind (generics: Generics) (arg: Expr) : (C.Type * C.Expr) =
     match arg with
     | TypeCast(expr, _type) ->
-        transformType generics (expr.Type), (transformExpr ctx generics expr)
+        transformType ctx generics (expr.Type), (transformExpr ctx generics expr)
     | Value(valueKind, _sourceLocationOption) ->
-        transformType generics valueKind.Type, C.Value (transformValueKind ctx generics valueKind)
+        transformType ctx generics valueKind.Type, C.Value (transformValueKind ctx generics valueKind)
     | _ -> failwithf "expected typecast for printf args %A" arg
 
 let format (ctx: C99Compiler.Context) transformType transformExpr transformValueKind (generics: (string * Type) list) (callInfo: CallInfo) =
@@ -79,11 +79,11 @@ let toConsole (context: C99Compiler.Context) (com: Type.ICompiler) transformType
                         match values.[i - 1] with
                         | Ok v ->
 //                        if values.[i - 1].Length = 1 then
-                            s <- s + (v.Type |> transformType generics).PrintfType
+                            s <- s + (v.Type |> transformType context generics).PrintfType
                         | Error (v, fields) ->
                             let printfComponents = System.String.Join("; ", fields |> List.map (fun f ->
-                                $"{f.Name} = {(transformType generics f.FieldType).PrintfType}"))
-                            s <- s + $"{(transformType generics v.Type).ToTypeString()} {{ {printfComponents} }}"
+                                $"{f.Name} = {(transformType context generics f.FieldType).PrintfType}"))
+                            s <- s + $"{(transformType context generics v.Type).ToTypeString()} {{ {printfComponents} }}"
                     s <- s + parts.[i]
                 let newValues = values |> List.collect (fun v ->
                     match v with

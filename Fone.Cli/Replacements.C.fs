@@ -49,10 +49,10 @@ let resolveByRefExpr (expr: Expr) : Expr =
         | DeclaredType(entityRef, genericArgs) when entityRef.FullName = byrefFullName ->
             expr
         | _ -> expr
-let isEmitType (t: Type) =
+let isEmitType (database: AST.Type.ICompiler) (t: Type) =
     match t with
     | DeclaredType(entityRef, genericArgs) ->
-        let ent = database.contents.TryGetEntity(entityRef)
+        let ent = database.TryGetEntity(entityRef)
         match ent with
         | Some ent ->
             let attributes = ent.Attributes
@@ -63,12 +63,12 @@ let isEmitType (t: Type) =
             )
         | _ -> None
     | _ -> None
-let replaceEmitTypeCallArgs (expr: Expr) =
+let replaceEmitTypeCallArgs database (expr: Expr) =
     expr |> walkExprInPlace (fun e ->
         match e with
         | Call(callee, callInfo, ``type``, sourceLocationOption) ->
             let args = callInfo.Args |> List.map (fun arg ->
-                match isEmitType arg.Type with
+                match isEmitType database arg.Type with
                 | Some typeName ->
                     TypeCast(arg, DeclaredType ({ FullName = typeName; Path = CoreAssemblyName "EmitType" }, []))
                 | _ -> arg
@@ -89,7 +89,7 @@ let rec replaceEmptyDelegatesAndLambdas (e: Expr) =
         | Some (callee, typ, info, r) -> callee
         | _ -> e
     | _ -> e
-let rec replaceTmdsCalls (e: Expr) =
+let rec replaceTmdsCalls database (e: Expr) =
     let inline step title =
         printfn $"{title}: Enter to step..."
         // Console.ReadLine() |> ignore
@@ -145,7 +145,7 @@ let rec replaceTmdsCalls (e: Expr) =
             printfn "========================== found expr =================================="
             Console.WriteLine("idents name is: " + name)
             Console.WriteLine (ident.Name)
-            Console.WriteLine (Print.printExpr 2 e)
+            Console.WriteLine (Print.printExpr database 2 e)
             e
     | _ ->
         e
@@ -210,7 +210,7 @@ let replaceByrefContents (e: Expr) =
         | _ -> e
 //    )
 let replacements =
-    (replaceTmdsCalls >>
+    // (replaceTmdsCalls >>
      // todo:
      // replaceEmptyDelegatesAndLambdas >>
-     replaceByrefContents >> replaceInputRecord >> replaceCopyOfStruct)
+     (replaceByrefContents >> replaceInputRecord >> replaceCopyOfStruct)

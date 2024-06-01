@@ -7,7 +7,7 @@ open Fable.C
 open Fable.C.AST
 open System.Text
 
-let writeStruct (generics: (string * Type) list) (ent: Entity) (ctor: MemberDecl option) (struct_name: string, compiledFields: (string * C.Type) list) =
+let writeStruct ctx (generics: (string * Type) list) (ent: Entity) (ctor: MemberDecl option) (struct_name: string, compiledFields: (string * C.Type) list) =
     if true || struct_name.Contains "Array" then
         printfn $"struct {struct_name} %A{compiledFields}"
     if ent.BaseType |> Option.map (fun t -> t.Entity.FullName) = Some "System.Attribute" then
@@ -42,7 +42,7 @@ let writeStruct (generics: (string * Type) list) (ent: Entity) (ctor: MemberDecl
                 | Some c ->
                     let paramsText =
                         c.Args
-                        |> List.map (fun a -> a.Name, Fable.C.Transforms.transformType generics a.Type)
+                        |> List.map (fun a -> a.Name, Fable.C.Transforms.transformType ctx generics a.Type)
                         |> List.map (fun (name, t) -> $"{t.ToTypeString()} {name}")
                         |> String.concat ", "
                     _sb.AppendLine $"{struct_name} {struct_name}_ctor({paramsText});" |> ignore
@@ -56,7 +56,7 @@ let writeStruct (generics: (string * Type) list) (ent: Entity) (ctor: MemberDecl
                 | Some c ->
                     let paramsText =
                         c.Args
-                        |> List.map (fun a -> a.Name, Fable.C.Transforms.transformType generics a.Type)
+                        |> List.map (fun a -> a.Name, Fable.C.Transforms.transformType ctx generics a.Type)
                         |> List.map (fun (name, t) -> $"{t.ToTypeString()} {name}")
                         |> String.concat ", "
                     _sb.AppendLine $"{struct_name}* {struct_name}_ctor({paramsText});" |> ignore
@@ -73,25 +73,25 @@ let writeStruct (generics: (string * Type) list) (ent: Entity) (ctor: MemberDecl
             |> ignore
         _sb.ToString()
 
-let writeUnionToBuilder (genArgs: Type list) (sb: CompiledOutputBuilder) (ent: Entity) =
+let writeUnionToBuilder ctx (genArgs: Type list) (sb: CompiledOutputBuilder) (ent: Entity) =
     let generics =
         genArgs
         |> List.zip (ent.GenericParameters |> List.map _.Name)
     let getCaseInfo (case: UnionCase) : string * (string * C.Type) list =
         let fields = case.UnionCaseFields
-        Helpers.Print.unionCaseName(Transforms.transformType generics, genArgs, case), [
+        Helpers.Print.unionCaseName(Transforms.transformType ctx generics, genArgs, case), [
             for f in fields do
 //                            let f2 = f :?> FsField
                 // yield (f.DisplayName, transformType [] f.FieldType)
                 // todo: merp
-                yield (f.Name, Transforms.transformType generics f.FieldType)
+                yield (f.Name, Transforms.transformType ctx generics f.FieldType)
         ]
     let cases =
         ent.UnionCases
         |> List.map getCaseInfo
-        |> List.map (writeStruct generics ent None)
-    let fieldNames = ent.UnionCases |> List.map (fun c -> $"""{Helpers.Print.unionCaseName (Transforms.transformType generics, genArgs, c)} {c.Name};""")
-    let fullName = Helpers.Print.unionName (Transforms.transformType generics, genArgs, ent)
+        |> List.map (writeStruct ctx generics ent None)
+    let fieldNames = ent.UnionCases |> List.map (fun c -> $"""{Helpers.Print.unionCaseName (Transforms.transformType ctx generics, genArgs, c)} {c.Name};""")
+    let fullName = Helpers.Print.unionName (Transforms.transformType ctx generics, genArgs, ent)
     let union = $"""
 typedef union {fullName}_UnionData {{
     {System.String.Join("\n    ", fieldNames)}
@@ -118,8 +118,8 @@ typedef struct {fullName} {{
                 let case = ent.UnionCases[tag]
                 let toCall = [|
                     for field in case.UnionCaseFields do
-                        if Transforms.requiresTracking generics field.FieldType then
-                            let t = Transforms.transformType generics field.FieldType
+                        if Transforms.requiresTracking ctx generics field.FieldType then
+                            let t = Transforms.transformType ctx generics field.FieldType
                             let name =
                                 match t with
                                 | C.Ptr t -> t.ToNameString()
@@ -142,14 +142,14 @@ typedef struct {fullName} {{
             for (tag, case) in ent.UnionCases |> List.mapi (fun index case -> index, case) do
                 let info = getCaseInfo case
                 let argText (arg: Field) =
-                    let t = Transforms.transformType generics arg.FieldType
+                    let t = Transforms.transformType ctx generics arg.FieldType
                     $"{t.ToTypeString()} {arg.Name}"
                 let args = case.UnionCaseFields |> List.map argText |> String.concat ", "
                 let assignments =
                     case.UnionCaseFields
                     |> List.map (fun field ->
                         $"this$->union_data.{case.Name}.{field.Name} = {field.Name};" +
-                        (if Transforms.requiresTracking generics field.FieldType then
+                        (if Transforms.requiresTracking ctx generics field.FieldType then
                             $"\n    this$->union_data.{case.Name}.{field.Name}->__refcount++;"
                          else
                             "")
@@ -170,8 +170,8 @@ typedef struct {fullName} {{
         {| decl = declarations; code = code |}
     else
         {| decl = ""; code = "" |}
-let writeArray arrayType =
-    let t = (Transforms.transformType [] arrayType)
+let writeArray ctx arrayType =
+    let t = (Transforms.transformType ctx [] arrayType)
     // todo: Arrays of arrays
     // todo: I think get_Item needs to use Autorelease/increment count
         // ex: foo[index] is used as param to function f, f calls g, value gets stored into a variable in g, and that variable goes out of scope
@@ -199,7 +199,7 @@ void {typeName}_set_Item({typeName}* this$, int index, {t.ToTypeString()} value)
     this$->data = malloc(sizeof({t.ToTypeString()}) * size);
     for (int i = 0; i < size; i++) {{
         this$->data[i] = data[i];
-        {if Transforms.requiresTracking [] arrayType then "this$->data[i]->__refcount++;" else ""}
+        {if Transforms.requiresTracking ctx [] arrayType then "this$->data[i]->__refcount++;" else ""}
     }}
     return ({typeName}*)Runtime_autorelease(this$, {typeName}_Destructor);
 }}
@@ -221,7 +221,7 @@ void {typeName}_set_Item({typeName}* this$, int index, {t.ToTypeString()} value)
         exit(index);
     }}
     {
-        if Transforms.requiresTracking [] arrayType then
+        if Transforms.requiresTracking ctx [] arrayType then
             let name = t.ToNameString()
             let tName = name.Substring(0, name.Length - 3)
             let destructor = tName + "_Destructor"
@@ -242,7 +242,7 @@ void {typeName}_set_Item({typeName}* this$, int index, {t.ToTypeString()} value)
 }}
 void {typeName}_Destructor({typeName}* this$) {{
     {
-        if (Transforms.requiresTracking [] arrayType) then
+        if (Transforms.requiresTracking ctx [] arrayType) then
             match t with
             | C.AST.C.Ptr t ->
                 $"

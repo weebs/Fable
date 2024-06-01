@@ -16,7 +16,15 @@ type Context = {
     currentFile: string
     idents: string list
     db: AST.Type.ICompiler
+    m: Module
 }
+and Module =
+    abstract member transformExpr : (string * Type) list -> Expr -> Fable.C.AST.C.Expr
+    abstract member transformType : (string * Type) list -> Type -> Fable.C.AST.C.Type
+    abstract member requiresTracking : (string * Type) list -> Type -> bool
+    abstract member writeExpression : Fable.C.AST.C.Expr -> string
+    abstract member writeStatement : Fable.C.AST.C.Statement -> string
+    abstract member db : AST.Type.ICompiler
 
 type FileCompilationResults = {
     classDeclarations: Map<string, ClassDecl>

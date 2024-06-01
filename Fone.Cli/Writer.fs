@@ -1,4 +1,4 @@
-module Fable.C.Writer
+module rec Fable.C.Writer
 
 open System.Text
 open AST
@@ -10,12 +10,11 @@ module Interfaces =
     type ICompiler =
         abstract member transformFunc: string -> Fable.Ident list -> Fable.Expr -> (string * Fable.Type) list -> C.FunctionInfo
 
-let com = ref Unchecked.defaultof<Fable.Compiler>
-
+// let com = ref Unchecked.defaultof<Fable.Compiler>
 // let mutable icompiler = Unchecked.defaultof<Interfaces.ICompiler>
 
-let mutable writeStatement: C.Statement -> SourceBuilder = Unchecked.defaultof<_>
-let mutable writeExpression: C.Expr -> string = Unchecked.defaultof<_>
+// let mutable writeStatement: C.Statement -> SourceBuilder = Unchecked.defaultof<_>
+// let mutable writeExpression: C.Expr -> string = Unchecked.defaultof<_>
 
 let __struct = ""
 
@@ -138,7 +137,7 @@ let valueToString (value: C.ValueKind) : string =
                 if n.Contains "." = false then n + ".0"
                 else n
             | s -> string s
-let rec _writeExpr (expr: C.Expr) : string =
+let rec writeExpression (expr: C.Expr) : string =
     match expr with
     | C.BlockExpr statements ->
         let sb = SourceBuilder()
@@ -153,7 +152,7 @@ let rec _writeExpr (expr: C.Expr) : string =
             .AppendLine(")")
             .ToString()
     | C.Ternary(cond, onTrue, onFalse) ->
-        $"{_writeExpr cond} ? {_writeExpr onTrue} : {_writeExpr onFalse}"
+        $"{writeExpression cond} ? {writeExpression onTrue} : {writeExpression onFalse}"
     | C.Binary (op, left, right) ->
         let op_string =
             match op with
@@ -176,10 +175,10 @@ let rec _writeExpr (expr: C.Expr) : string =
             | C.Binary _ -> true
             | _ -> false
         let left =
-            let expr = _writeExpr left
+            let expr = writeExpression left
             if isBinary left then $"({expr})" else expr
         let right =
-            let expr = _writeExpr right
+            let expr = writeExpression right
             if isBinary right then $"({expr})" else expr
         $"{left} {op_string} {right}"
         // if isBinary left || isBinary right then
@@ -197,9 +196,9 @@ let rec _writeExpr (expr: C.Expr) : string =
                 if i.IsThisArgument then
                     i.Name
                 else
-                    _writeExpr expr
+                    writeExpression expr
             | _ ->
-                _writeExpr expr
+                writeExpression expr
         let args = args |> List.map writeExpression'
         let args = System.String.Join(", ", args)
         $"{name}({args})"
@@ -208,23 +207,23 @@ let rec _writeExpr (expr: C.Expr) : string =
         | C.Ident (i, isValueType) when i.IsThisArgument && not isValueType ->
             $"{i.Name}->{field}"
         | _ ->
-            $"{_writeExpr ident}.{field}"
+            $"{writeExpression ident}.{field}"
     | C.DerefMemberAccess(ident, field) ->
         match ident with
         | C.Ident (i, _) ->
             $"{i.Name}->{field}"
         | _ ->
-            $"({_writeExpr ident})->{field}"
+            $"({writeExpression ident})->{field}"
     | C.Expr.Emit s ->
         $"{s}"
     | C.IndexedAccess(source, index) ->
-        $"{_writeExpr source}[{_writeExpr index}]"
+        $"{writeExpression source}[{writeExpression index}]"
     | C.TypeCast(``type``, expr) ->
         if (``type``.ToTypeString().Contains "voidptr") then
             for i in 1..20 do
                 printfn $"%A{``type``}"
                 printfn $"%A{expr}"
-        $"({``type``.ToTypeString()})({_writeExpr expr})"
+        $"({``type``.ToTypeString()})({writeExpression expr})"
     | C.SizeOf t ->
         $"sizeof({t.ToTypeString()})"
     | C.Unary (op, expr) ->
@@ -232,18 +231,17 @@ let rec _writeExpr (expr: C.Expr) : string =
         | C.Deref ->
             match expr with
             | C.Unary (op, ident) when op = C.Ref ->
-                _writeExpr ident
+                writeExpression ident
             | _ ->
-                $"(*{_writeExpr expr})"
+                $"(*{writeExpression expr})"
         | C.Ref ->
-            $"&{_writeExpr expr}"
+            $"&{writeExpression expr}"
         | C.Not ->
-            $"!({_writeExpr expr})"
+            $"!({writeExpression expr})"
     | C.Expr.ExprAssignment (expr, value) ->
-        $"{_writeExpr expr} = {_writeExpr value}"
+        $"{writeExpression expr} = {writeExpression value}"
     | C.Unknown ->
         ""
-writeExpression <- _writeExpr
 type SourceBuilder with
     member this.AppendStatement(statement: C.Statement) =
         this.AppendBuilder(writeStatement statement)
@@ -296,7 +294,7 @@ let doRaii (body: C.Statement list) (sb: SourceBuilder) =
 
         // printfn $"{i}"
 
-let rec _writeStmt (statement: C.Statement) : SourceBuilder =
+let rec writeStatement (statement: C.Statement) : SourceBuilder =
     let sb = SourceBuilder()
     match statement with
     | C.Assignment(expr1, expr2) ->
@@ -306,19 +304,19 @@ let rec _writeStmt (statement: C.Statement) : SourceBuilder =
             | DeclaredType(entityRef, genericArgs) when not isValueType -> // when com.Value.GetEntity(entityRef).IsValueType = false ->
 //                sb.AppendLine($"Runtime_assign_to_obj((void**)&{writeExpression expr1}, {writeExpression expr2});")
                 // todo: move this?
-                sb.AppendLine($"{_writeExpr expr1} = {_writeExpr expr2};")
+                sb.AppendLine($"{writeExpression expr1} = {writeExpression expr2};")
             | _ ->
-                sb.AppendLine($"{_writeExpr expr1} = {_writeExpr expr2};")
+                sb.AppendLine($"{writeExpression expr1} = {writeExpression expr2};")
         | _ ->
-            sb.AppendLine($"{_writeExpr expr1} = {_writeExpr expr2};")
+            sb.AppendLine($"{writeExpression expr1} = {writeExpression expr2};")
     | C.Emit s ->
         sb.AppendText(s)
     | C.Expression expr ->
         match expr with
         | C.Value C.ValueKind.Void -> sb
-        | _ -> sb.AppendLine((_writeExpr expr) + ";")
+        | _ -> sb.AppendLine((writeExpression expr) + ";")
     | C.Return expr ->
-        sb.AppendLine($"return {_writeExpr expr};")
+        sb.AppendLine($"return {writeExpression expr};")
     | C.Declaration decl ->
         match decl._type with
         | C.FunctionPtr(types, returnType) ->
@@ -326,11 +324,11 @@ let rec _writeStmt (statement: C.Statement) : SourceBuilder =
             match decl.value with
             | C.ExprAssignment expr ->
                 sb
-                    .AppendLine($"{returnType.ToTypeString()} (*{decl.name})({s}) = {_writeExpr expr};")
+                    .AppendLine($"{returnType.ToTypeString()} (*{decl.name})({s}) = {writeExpression expr};")
             | C.StatementAssignment statement ->
                 // todo: is this possible? do we need to handle it differently?
                 sb
-                    .AppendLine($"{returnType.ToTypeString()} (*{decl.name})({s}) = {_writeStmt statement};")
+                    .AppendLine($"{returnType.ToTypeString()} (*{decl.name})({s}) = {writeStatement statement};")
             | C.Default ->
                 sb.AppendLine($"{returnType.ToTypeString()} (*{decl.name})({s});")
         | _ ->
@@ -345,7 +343,7 @@ let rec _writeStmt (statement: C.Statement) : SourceBuilder =
                 | C.UserDefined(fullName, _, entityRef) ->
                     sb.Append($"{__struct}") |> ignore
                 | _ -> ()
-                sb.AppendLine($"{decl._type.ToTypeString()} {decl.name} = {_writeExpr expr};")
+                sb.AppendLine($"{decl._type.ToTypeString()} {decl.name} = {writeExpression expr};")
             | C.StatementAssignment statement ->
                 let simpleExpr s =
                     match s with
@@ -355,7 +353,7 @@ let rec _writeStmt (statement: C.Statement) : SourceBuilder =
                     match s with
                     | C.Expression expr ->
                         C.Block ((statements |> List.take (statements.Length - 1)) @ [
-                            C.Emit $"{decl.name} = {_writeExpr expr};\n"
+                            C.Emit $"{decl.name} = {writeExpression expr};\n"
                             if decl.requiresTracking then
                                 C.Emit $"{decl.name}->__refcount++;\n"
                         ])
@@ -369,7 +367,7 @@ let rec _writeStmt (statement: C.Statement) : SourceBuilder =
                             let returns =
                                 if simpleExpr (List.last ifTrue) then
                                     [
-                                        C.Emit $"{decl.name} = {List.last ifTrue |> _writeStmt}"
+                                        C.Emit $"{decl.name} = {List.last ifTrue |> writeStatement}"
                                         if decl.requiresTracking then
                                             C.Emit $"{decl.name}->__refcount++;"
                                     ]
@@ -391,7 +389,7 @@ let rec _writeStmt (statement: C.Statement) : SourceBuilder =
                             let returns =
                                 if simpleExpr (List.last ifFalse) then
                                     [
-                                        C.Emit $"{decl.name} = {List.last ifFalse |> _writeStmt}"
+                                        C.Emit $"{decl.name} = {List.last ifFalse |> writeStatement}"
                                         if decl.requiresTracking then
                                             C.Emit $"{decl.name}->__refcount++;"
                                     ]
@@ -437,7 +435,7 @@ let rec _writeStmt (statement: C.Statement) : SourceBuilder =
             .Append("for (")
             .AppendStatementInline(C.Declaration tuple)
             .Append("; ")
-            .Append(_writeExpr expr + "; ")
+            .Append(writeExpression expr + "; ")
             .AppendStatementInline(statement)
             .AppendLine(") {")
             .BeginBlock(fun sb ->
@@ -446,7 +444,7 @@ let rec _writeStmt (statement: C.Statement) : SourceBuilder =
             )
             .AppendLine("}")
     | C.WhileLoop(expr, statements) ->
-        let expr = _writeExpr expr
+        let expr = writeExpression expr
         sb.AppendLine($"while ({expr}) {{")
             .BeginBlock(fun sb ->
 //                for s in statements do
@@ -455,7 +453,7 @@ let rec _writeStmt (statement: C.Statement) : SourceBuilder =
             )
             .AppendLine("}")
     | C.Conditional(guard, ifTrue, ifFalse) ->
-        let expr = _writeExpr guard
+        let expr = writeExpression guard
         sb.AppendLine($"if ({expr}) {{")
             .BeginBlock(fun sb ->
 //                for s in ifTrue do
@@ -480,7 +478,6 @@ let rec _writeStmt (statement: C.Statement) : SourceBuilder =
     | _ ->
         sb
 //    sb
-writeStatement <- _writeStmt
 let writeStatements (sb: SourceBuilder) (body: C.Statement list) =
     if body.Length > 0 then
 //                for s in body |> List.take (body.Length - 1) do // todo: pull declarations ending with $ctor (but later, fix lookup if it's a ref type)
@@ -534,7 +531,7 @@ let structCompare (infoA: C.Struct) (infoB: C.Struct) =
         else
             1
 let compileFile (_com: Fable.Compiler) (result: {| compiled_module: Map<_,_>; includes: string list |}) : string =
-    com := _com
+    // com := _com
 //    System.IO.File.WriteAllText("/home/dave/code/github/Fable/src/RustSample/Program.c.json", Compiler.Json.serialize _module.Values)
     let _sb = StringBuilder()
     // Import includes
@@ -607,7 +604,7 @@ let compileFile (_com: Fable.Compiler) (result: {| compiled_module: Map<_,_>; in
         | C.StaticVar decl ->
             match decl.value with
             | C.ExprAssignment expr ->
-                _sb.AppendLine($"{decl._type.ToTypeString()} {decl.name} = {_writeExpr expr};")
+                _sb.AppendLine($"{decl._type.ToTypeString()} {decl.name} = {writeExpression expr};")
                    .AppendLine("")
                 |> ignore
             | C.StatementAssignment statement -> () // todo

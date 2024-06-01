@@ -261,7 +261,7 @@ let writeModuleHeaderFile context (projPath: string) =
 
     // Write out the relevant header info for each file in the project
     for file in compiler.Files do
-        Headers.writeFilesModuleHeaderStuffs methods_sb sb file
+        Headers.writeFilesModuleHeaderStuffs context methods_sb sb file
 
     methods_sb.Append "\n" |> ignore
     sb.Append (methods_sb.ToString()) |> ignore
@@ -311,7 +311,7 @@ let writeModuleHeaderFile context (projPath: string) =
             |> Seq.map compiler.GetResult
             |> Seq.map (fun r -> r.memberDeclarations.Values)
             |> Seq.collect id
-            |> Seq.exists (fst >> isEntryPoint database.contents)
+            |> Seq.exists (fst >> isEntryPoint context.db)
         if not hasEntryPoint then
             sb.AppendLine("int main(int argc, char** argv);") |> ignore
             let s = writeMainFile projHeaderName None

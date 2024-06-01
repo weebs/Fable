@@ -147,9 +147,16 @@ let writeFile (sourceFilePath: string) (includes: string list) (compiledModule: 
     //     sb.AppendLine($"#endif")
     //     |> ignore
     log $"Writing file {sourceFilePath} to destination {testPath}"
-    io.file.write(testPath, sb.ToString())
-    sb.ToString() + "\n"
-let transformFile (_com: Fable.Compiler) (file: File) =
+    let output = sb.ToString()
+    io.file.write(testPath, output)
+    output + "\n"
+
+// type FoneModule() as this =
+//     interface Module with
+//         member this.db = Unchecked.defaultof<_>
+//         member this.transformType generics t = transformType this generics t
+
+let transformFile (database: AST.Type.ICompiler) (_com: Fable.Compiler) (file: File) =
     // database.contents <- _com
     compiler.UpdateFile(_com.CurrentFile, FileCompilationResults.Empty, ())
     let context = {
@@ -157,7 +164,9 @@ let transformFile (_com: Fable.Compiler) (file: File) =
         file = file
         currentFile = _com.CurrentFile
         idents = []
-        db = database.contents
+        db = database
+        // todo : module
+        m = Operators.Unchecked.defaultof<_>
     }
     do
         let dir = IO.Path.GetDirectoryName(_com.CurrentFile)
@@ -197,10 +206,10 @@ let transformFile (_com: Fable.Compiler) (file: File) =
                 | IdentExpr ident ->
                     C.StatementAssignment (C.Block (transformMember context [] memberDecl.Body))
                 | _ ->
-                    if Query.isSimpleExpr memberDecl.Body then C.ExprAssignment (transformExpr context [] memberDecl.Body)
+                    if Query.isSimpleExpr database memberDecl.Body then C.ExprAssignment (transformExpr context [] memberDecl.Body)
                     else C.StatementAssignment (C.Block (transformMember context [] memberDecl.Body))
             State.addModuleStaticVar _com.CurrentFile (memberDecl.Name, memberDecl)
-            compiledModule += (memberDecl.Name, C.StaticVar { _type = transformType [] memberDecl.Body.Type; name = memberDecl.Name; value = value; requiresTracking = false })
+            compiledModule += (memberDecl.Name, C.StaticVar { _type = transformType context [] memberDecl.Body.Type; name = memberDecl.Name; value = value; requiresTracking = false })
             match memberDecl.MemberRef with
             | MemberRef (ent, info) ->
                 try
@@ -208,7 +217,7 @@ let transformFile (_com: Fable.Compiler) (file: File) =
                 with ex -> printfn $"{ex}"
                 let name = Print.compiledMethodName (memberDecl, [], ent)
                 compiledModule += (name, C.Function {
-                    id = name; args = []; return_type = transformType [] memberDecl.Body.Type; body = [
+                    id = name; args = []; return_type = transformType context [] memberDecl.Body.Type; body = [
                         C.Return (C.Expr.Emit $"{memberDecl.Name}")
                     ]
                 })
@@ -259,8 +268,8 @@ let transformFile (_com: Fable.Compiler) (file: File) =
                 // todo: how to add the external declaration to the header
                 // todo: or declare extern type?
 
-                let return_type = transformType [] memberDecl.Body.Type
-                let args = memberDecl.Args |> List.map (fun arg -> arg.Name, transformType [] arg.Type)
+                let return_type = transformType context [] memberDecl.Body.Type
+                let args = memberDecl.Args |> List.map (fun arg -> arg.Name, transformType context [] arg.Type)
                 compiledModule += (compiledName, C.Extern (memberDecl.Name, args, return_type))
 
                 // todo: disabled this for now

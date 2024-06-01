@@ -90,14 +90,7 @@ module Compiler =
                     | _ -> ()
 
                 let transformedFile = Fable.Transforms.FableTransforms.transformFile com file
-            // Fable.C.Helpers.database.Value <- {
-            //     new Fable.C.Helpers.Type.ICompiler with
-            //         member this.TryGetEntity entityRef = None
-            //         member this.TryGetMember memberRef = None
-            //         member this.GetEntity entityRef = Unchecked.defaultof<_>
-            //         member this.GetMember memberRef = Unchecked.defaultof<_>
-            // }
-                let c_file = Fable.C.File.transformFile com transformedFile
+                let c_file = Fable.C.File.transformFile cache com transformedFile
                 Fable.C.File.writeFile filePath c_file.includes c_file.compiledModule c_file.static_constructor
         |]
         let header =
