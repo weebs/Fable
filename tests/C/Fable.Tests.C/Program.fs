@@ -108,6 +108,7 @@ module Fable.Tests.C.Program
 //   let (Parser innerFn) = parser
 //   // call inner function with input
 //   innerFn input
+open Fable.Tests.C
 Fable.Tests.C.Closures.test ()
 Fable.Tests.C.Objects.Records.test ()
 Fable.Tests.C.Structs.test ()
@@ -115,3 +116,4 @@ Fable.Tests.C.Options.test ()
 Fable.Tests.C.Tuples.test ()
 Fable.Tests.C.Unions.test ()
 Fable.Tests.C.Collections.test ()
+Byrefs.tests ()

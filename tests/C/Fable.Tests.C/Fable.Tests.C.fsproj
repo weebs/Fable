@@ -6,6 +6,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <Compile Include="Byrefs.fs" />
         <Compile Include="System.fs" />
         <Compile Include="List.fs" />
         <Compile Include="Tuples.fs" />
@@ -18,6 +19,7 @@
         <Compile Include="Program.fs" />
         <Content Include="*.c" />
         <Content Include="*.js" />
+        <Content Include="Makefile" />
     </ItemGroup>
 
 </Project>

@@ -1,6 +1,9 @@
 ﻿module Fable.Tests.C.Structs
 
-type [<Struct>] FooRecordStruct = { a:int; b: float }
+type [<Struct>] FooRecordStruct = {
+    a: int
+    b: float
+}
 
 type [<Struct>] FooStruct<'t>(item: 't) =
     member this.Item = item

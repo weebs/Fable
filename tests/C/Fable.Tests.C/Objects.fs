@@ -3,6 +3,10 @@ type Foo = { bar: int }
 type Bar(n: int) =
     member this.N = n
 
+type HasFinalizer() =
+    override this.Finalize() =
+        printfn "Finalize!"
+
 module Records =
     let test () =
         let f = { bar = 1234 }

@@ -29,6 +29,7 @@
         <Compile Include="Database.fs" />
         <Compile Include="Cli.fs" />
         <Content Include="README.md" />
+        <Compile Include="Program.fs" />
     </ItemGroup>
 
     <ItemGroup>

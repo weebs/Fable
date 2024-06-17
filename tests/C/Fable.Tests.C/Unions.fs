@@ -14,7 +14,8 @@ type BarUnion<'t> =
 
 let test () =
     let items = (System.Collections.Generic.List<int>())
-    for i in 1..100 do items.Add i
+    for i in 1..100 do 
+        items.Add i
     let meow = FooUnion.B (1, 42)
     let arf = BarUnion<int * int * int * int>.Z (FooUnion.C items)
     match arf with

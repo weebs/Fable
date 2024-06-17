@@ -129,7 +129,7 @@ module Compiler =
         let fableLibDir = ""
 
         let cache =  Fone.Database.FableCompilationCache()
-        Fable.C.Helpers.database.Value <- cache
+        // Fable.C.Helpers.database.Value <- cache
         // let filePath = Array.last projCracked.SourceFilePaths
         let compiledFiles = [|
             for filePath in projCracked.SourceFilePaths do
@@ -172,7 +172,7 @@ let main () =
         let fableLibDir = ""
 
         let cache =  Fone.Database.FableCompilationCache()
-        Fable.C.Helpers.database.Value <- cache
+        // Fable.C.Helpers.database.Value <- cache
         // let filePath = Array.last projCracked.SourceFilePaths
         let compiledFiles = [|
             for filePath in [| "main.fsx" |] do
@@ -204,7 +204,7 @@ let main () =
             //         member this.GetEntity entityRef = Unchecked.defaultof<_>
             //         member this.GetMember memberRef = Unchecked.defaultof<_>
             // }
-                let c_file = Fable.C.File.transformFile com transformedFile
+                let c_file = Fable.C.File.transformFile true cache com transformedFile
                 Fable.C.File.writeFile filePath c_file.includes c_file.compiledModule c_file.static_constructor
         |]
         let header =
@@ -213,9 +213,11 @@ let main () =
                 {
                     com = com
                     currentFile = "Program.fs"; idents = []
-                    db = Fable.C.Helpers.database.contents
+                    db = cache
                     // todo:
                     file = Unchecked.defaultof<_>
+                    useSourceMap = true
+                    m = Unchecked.defaultof<_>
                 }
                 "/build/project.json"
         let files = io.files
@@ -298,84 +300,3 @@ let serialization () =
             |> List.map (fun file -> Encode.Auto.toString (file, extra = extra))
         )
     printfn $"{s}"
-// let asdf () =
-//     let file = "/proj.fsproj"
-//     let text ="""
-// <Project Sdk="Microsoft.NET.Sdk">
-//     <PropertyGroup>
-//         <OutputType>Exe</OutputType>
-//         <TargetFramework>net8.0</TargetFramework>
-//     </PropertyGroup>
-//
-//     <ItemGroup>
-//         <Compile Include="Program.fs"/>
-//     </ItemGroup>
-// </Project>
-// """
-//     let code = "
-// module Program
-//
-// printfn \"Hello world!!\"
-// "
-//     try
-//         System.IO.File.WriteAllText(file, text)
-//         System.IO.File.WriteAllText("/Program.fs", code)
-//         let output = File.ReadAllText(file)
-//         let sourceFiles = [| "/Program.fs" |]
-//         let opts: FSharpProjectOptions = {
-//             ProjectFileName = ""
-//             ProjectId = None
-//             SourceFiles = sourceFiles
-//             OtherOptions = [||]
-//             ReferencedProjects = [||]
-//             IsIncompleteTypeCheckEnvironment = false
-//
-//             UseScriptResolutionRules = true
-//
-//             LoadTime = DateTime.Now
-//             UnresolvedReferences = None
-//             OriginalLoadReferences = []
-//             Stamp = None
-//         }
-//         // let checker = InteractiveChecker.Create(opts)
-//         let checker = FSharpChecker.Create()
-//         printfn $"output = {output}"
-//         printfn $"checker = {checker}"
-//         let fsharpAssemblies =
-//             // checker.GetImportedAssemblies() |> Async.RunSynchronously
-//             []
-//         let fableSrcFiles = sourceFiles |> Array.map (Fable.Compiler.File)
-//         let filePaths, sourceReader = Fable.Compiler.File.MakeSourceReader fableSrcFiles
-//         task {
-//             let! results =
-//                 checker.ParseAndCheckProject(file, filePaths, sourceReader, Array.last sourceFiles, ignore)
-//                 // |> Async.RunSynchronously
-//
-//             let project =
-//                 Project.From (file, sourceFiles, results.AssemblyContents.ImplementationFiles, fsharpAssemblies)
-//             let fableLibDir = ""
-//
-//             let cache =  Fone.Database.FableCompilationCache()
-//             Fable.C.Helpers.database.Value <- cache
-//             // let filePath = Array.last projCracked.SourceFilePaths
-//             let compiledFiles = [|
-//                 for filePath in sourceFiles do
-//                     CompilerImpl(filePath, project, Compiler.options, fableLibDir)
-//             |]
-//             Compiler.compileProject file
-//         } |> ignore
-//     with error ->
-//         printfn $"{error}"
-
-// [<EntryPoint>]
-let main argv =
-    let testsProjFile =
-        Path.Join(__SOURCE_DIRECTORY__, "../tests/C/Fable.Tests.C/Fable.Tests.C.fsproj")
-        // Path.Join(__SOURCE_DIRECTORY__, "../src/quicktest/Quicktest.fsproj")
-        // "C:/Users/Dave/projects/Fable/src/quicktest/Quicktest.fsproj"
-    // File.WriteAllText("/Quicktest.fsproj", projText)
-    // let quicktest = Path.Join(__SOURCE_DIRECTORY__, "../tests/Fable.Tests.C/Fable.Tests.C.fsproj")
-    // Compiler.compileSingleFile projFile // "C:/Users/Dave/projects/Fable/src/quicktest/QuickTest.fs"
-    Compiler.compileProject testsProjFile |> ignore
-    0
-

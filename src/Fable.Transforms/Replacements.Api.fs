@@ -69,7 +69,7 @@ let tryType (com: ICompiler) (t: Type) =
     | Dart -> Dart.Replacements.tryType t
     | _ -> JS.Replacements.tryType t
 
-let tryCall (com: ICompiler) ctx r t info thisArg args =
+let tryCall (com: ICompiler) ctx r t (info: Fable.ReplaceCallInfo) thisArg args =
     match com.Options.Language with
     | Rust -> Rust.Replacements.tryCall com ctx r t info thisArg args
     | Python -> Py.Replacements.tryCall com ctx r t info thisArg args
@@ -77,6 +77,23 @@ let tryCall (com: ICompiler) ctx r t info thisArg args =
     | Plugin "C" ->
         let ptrModule = "Microsoft.FSharp.NativeInterop.NativePtrModule"
         match info.CompiledName, info.DeclaringEntityFullName with
+        | "Dispose", "System.IDisposable"
+        | "UnboxGeneric", "Microsoft.FSharp.Core.LanguagePrimitives.IntrinsicFunctions"
+        | _, "System.Collections.Generic.IEnumerator`1"
+        | _, "System.Collections.Generic.IEnumerable`1" ->
+            None
+        | "GetHashCode", "System.Object" ->
+            None
+        | "op_Range", "Microsoft.FSharp.Core.Operators" ->
+            None
+        | "CreateSequence", "Microsoft.FSharp.Core.Operators" ->
+            None
+        | _, "System.Collections.IEnumerator`1" ->
+            None
+        | _, "System.Collections.IEnumerator" ->
+            None
+        | _, "Microsoft.FSharp.Collections.SeqModule" ->
+            None
         | ".ctor", "System.Collections.Generic.Dictionary`2" -> None
         | "get_Item", "System.Collections.Generic.Dictionary`2" -> None
         | ".ctor", "System.Collections.Generic.List`1" -> None
@@ -133,7 +150,14 @@ let tryCall (com: ICompiler) ctx r t info thisArg args =
             // |> Some
         | _ ->
             let replaced = JS.Replacements.tryCall com ctx r t info thisArg args
-            replaced
+            match replaced with
+            | None ->
+                None
+            | _ ->
+                // printfn $"Replaced {info.CompiledName} from {info.DeclaringEntityFullName} with"
+                // let s = $"%A{replaced}"
+                // printfn $"{s}"
+                replaced
     | _ -> JS.Replacements.tryCall com ctx r t info thisArg args
 
 let error (com: ICompiler) msg =

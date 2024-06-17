@@ -145,7 +145,10 @@ let transformStringTemplate ctx (com: Type.ICompiler) (generics: (string * Type)
         | Ok v -> [ v ]
         | Error (Some (v, fields)) ->
             fields |> List.map (fun f ->
-                let fieldInfo: Fable.FieldInfo = { Name = f.Name; FieldType = Some f.FieldType; IsMutable = f.IsMutable; MaybeCalculated = false; Tags = [] }
+                let fieldInfo = {
+                    MaybeCalculated = false; Tags = []
+                    Name = f.Name; FieldType = Some f.FieldType; IsMutable = f.IsMutable
+                }
                 Fable.Get (v, Fable.GetKind.FieldGet fieldInfo, f.FieldType, None)
             )
         | _ ->
@@ -195,11 +198,6 @@ let rec transformType (ctx: C99Compiler.Context) (generics: (string * Type) list
             | MutableArray ->
                 C.Ptr (C.UserDefined ($"System_Array__{t.ToNameString()}", false, None))
             | ImmutableArray -> failwith "todo"
-    //        C.Ptr (C.EmitType $"System_Array__{(transformType generics genericArg).ToNameString()}")
-    //        C.Ptr (transformType generics genericArg)
-        // todo
-        // | Fable.Type.DelegateType(argTypes, returnType) ->
-            // C.FunctionPtr (List.map (transformType generics) argTypes, transformType generics returnType)
         | Fable.Type.DelegateType (argTypes, returnType) ->
             C.Ptr (C.UserDefined (Print.funcTypeName ((transformType generics), argTypes, returnType), false, None))
         | Fable.Type.LambdaType(argType, returnType) ->
@@ -995,17 +993,6 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
                 // | Array (typ, kind: ArrayKind) ->
                 //     C.DerefMemberAccess(transformExpr ctx generics expr, info.Name)
                 | _ -> accessType (transformExpr ctx generics e, info.Name)
-    //            match expr.Type with
-    //            | DeclaredType(entityRef, genericArgs) ->
-    //                database.contents.TryGetEntity(entityRef)
-    //                |> Option.bind (fun ent ->
-    //                    if ent.IsValueType then Some <| C.DerefMemberAccess (transformExpr ctx generics expr, info.Name)
-    //                    else None
-    //                )
-    //            | _ ->
-    //                None
-    //            |> Option.defaultValue
-    //                (C.MemberAccess (transformExpr ctx generics expr, info.Name))
             | ExprGet getExpr ->
                 match e.Type with
                 | Array(genericArg, arrayKind) ->
@@ -1459,7 +1446,8 @@ let transformExpr (ctx: Context) (generics: (string * Type) list) (expr: Expr) :
         | _ ->
             Print.emitComment ctx.db expr
     with e ->
-        Print.emitComment ctx.db (string e)
+        Print.printComment (ctx.db, string e, expr)
+        |> C.Expr.Emit
 
 let getAnonymousFunctionName (ctx: Context) (filename: string) (expr: Expr) =
     let idents =
@@ -1576,7 +1564,7 @@ let transformNewRecord ctx generics expr =
                         yield (ident, [ C.Declaration { _type = _type; name = name; value = value; requiresTracking = failwith "todo" } ])
                     else
                         yield (transformExpr ctx generics v, [])
-                ]
+            ]
             let toReturn =
                 values |> List.collect snd
             let entity = ctx.db.GetEntity(entityRef)
@@ -2111,7 +2099,6 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
             | _ -> [ C.Statement.Expression <| transformExpr ctx generics body ]
         | _ -> [ C.Statement.Expression <| transformExpr ctx generics body ]
         |> fun result ->
-            let useSourceMap = false
             let range =
                 match body.Range with
                 | Some _ -> body.Range
@@ -2121,7 +2108,7 @@ let transformMember ctx (generics: (string * Type) list) (body: Expr) =
                         ident.Range |> Option.orElse value.Range |> Option.orElse body.Range
                     | _ -> None
             match range with
-            | Some range when useSourceMap ->
+            | Some range when ctx.useSourceMap ->
                 [
                     C.Emit $"#line {range.start.line} \"{Path.GetFileName ctx.currentFile}\""
                     yield! result

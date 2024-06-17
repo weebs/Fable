@@ -221,3 +221,26 @@ type FableCompilationCache() as this =
                     addMethod decl
                 | _ -> ()
     // end
+open Fable.AST
+open Fable.Transforms.State
+let populateCache (cache: FableCompilationCache) (com: CompilerImpl) (file: Fable.File) =
+    let addMethod (decl: MemberDecl) =
+        match decl.MemberRef with
+        | MemberRef(declaringEntity, info) ->
+            let ent = com.GetEntity declaringEntity
+            let mem = ent.TryFindMember info
+            cache.Update (Parsing.AddMember (decl.MemberRef, file, ent, mem.Value, decl))
+        | _ -> ()
+    for decl in file.Declarations do
+        match decl with
+        | ClassDeclaration decl ->
+            cache.Update (Parsing.AddEntity (file, com.GetEntity decl.Entity))
+            match decl.Constructor with
+            | Some ctor -> addMethod ctor
+            | None -> ()
+        | MemberDeclaration decl ->
+            addMethod decl
+        | _ -> ()
+
+type FableCompilationCache with
+    member this.UpdateWithFile com file = populateCache this com file

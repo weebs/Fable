@@ -1,12 +1,11 @@
 ﻿module Fable
 
 open System.Runtime.InteropServices
-
-
 type Ref<'t>(initValue: 't) =
     let mutable value = initValue
     member this.Value = value
     member this.SetValue _value = value <- _value
+    // interface System.Collections.Generic.IEnumerable with
 module Hash =
     let hashValue (pointer: nativeint) (length: int) : int =
         let pointer: nativeptr<byte> = NativeInterop.NativePtr.ofNativeInt pointer
@@ -55,6 +54,7 @@ module System =
                     // printfn $"[{n}] ==> {item}"
                 member this.Item
                     with get index = items[index]
+                    and set index value = items[index] <- value
                 member this.Count = n
             type Dictionary<'key, 'value when 'key: equality>() =
                 // let items: 'value[] = Array.zeroCreate 0
@@ -97,3 +97,128 @@ module System =
                         buckets[bucketIndex] <- newBucket
                     buckets.[bucketIndex].[counts[bucketIndex]] <- (key, value)
                     counts[bucketIndex] <- counts[bucketIndex] + 1
+            type IEnumerator =
+                abstract member MoveNext: unit -> bool
+                abstract member Current: obj
+                abstract member Reset: unit -> unit
+            type IEnumerable =
+                abstract member GetEnumerator: unit -> IEnumerator
+            type IEnumerable<'t> =
+                abstract member Current: 't
+            type IEnumerator<'t> =
+                abstract member GetEnumerator: unit -> IEnumerator<'t>
+    // module Microsoft =
+    //     module FSharp =
+    //         module Collections =
+    //             module SeqModule =
+    //                 let Delay<'t> (f: unit -> System.Collections.Generic.IEnumerable<'t>) =
+    //                     Microsoft.FSharp.Collections.Seq.delay
+    //         module Core =
+    //             module Operators =
+    //                 let CreateSequence<'t> () = ()
+            // let inline variableStepIntegralRange n step m =
+            //     if step = LanguagePrimitives.GenericZero then
+            //         invalidArg "step" (SR.GetString(SR.stepCannotBeZero));
+            //
+            //     let variableStepRangeEnumerator () =
+            //         let state = {
+            //             Started = false
+            //             Complete = false
+            //             Current = Unchecked.defaultof<'T>
+            //         }
+            //
+            //         let current () =
+            //             // according to IEnumerator<int>.Current documentation, the result of of Current
+            //             // is undefined prior to the first call of MoveNext and post called to MoveNext
+            //             // that return false (see https://learn.microsoft.com/dotnet/api/system.collections.generic.ienumerator-1.current?view=net-7.0)
+            //             // so we should be able to just return value here, and we could get rid of the
+            //             // complete variable which would be faster
+            //             if not state.Started then
+            //                 notStarted ()
+            //             elif state.Complete then
+            //                 alreadyFinished ()
+            //             else
+            //                 state.Current
+            //
+            //         { new IEnumerator<'T> with
+            //             member _.Current = current ()
+            //
+            //           interface IDisposable with
+            //             member _.Dispose () = ()
+            //
+            //           interface IEnumerator with
+            //             member _.Current = box (current ())
+            //
+            //             member _.Reset () =
+            //                 state.Started <- false
+            //                 state.Complete <- false
+            //                 state.Current <- Unchecked.defaultof<_>
+            //
+            //             member _.MoveNext () =
+            //                 if not state.Started then
+            //                     state.Started <- true
+            //                     state.Current <- n
+            //                     state.Complete <-
+            //                         (  (step > LanguagePrimitives.GenericZero && state.Current > m)
+            //                         || (step < LanguagePrimitives.GenericZero && state.Current < m))
+            //                 else
+            //                     let next = state.Current + step
+            //                     if   (step > LanguagePrimitives.GenericZero && next > state.Current && next <= m)
+            //                         || (step < LanguagePrimitives.GenericZero && next < state.Current && next >= m) then
+            //                         state.Current <- next
+            //                     else
+            //                         state.Complete <- true
+            //
+            //                 not state.Complete}
+            //
+            //     { new IEnumerable<'T> with
+            //         member _.GetEnumerator () = variableStepRangeEnumerator ()
+            //
+            //       interface IEnumerable with
+            //         member _.GetEnumerator () = (variableStepRangeEnumerator ()) :> IEnumerator }
+            //
+            // let inline simpleIntegralRange minValue maxValue n step m =
+            //     if step <> LanguagePrimitives.GenericOne || n > m || n = minValue || m = maxValue then
+            //         variableStepIntegralRange n step m
+            //     else
+            //         // a constrained, common simple iterator that is fast.
+            //         let singleStepRangeEnumerator () =
+            //             let mutable value = n - LanguagePrimitives.GenericOne
+            //
+            //             let inline current () =
+            //                 // according to IEnumerator<int>.Current documentation, the result of of Current
+            //                 // is undefined prior to the first call of MoveNext and post called to MoveNext
+            //                 // that return false (see https://learn.microsoft.com/dotnet/api/system.collections.generic.ienumerator-1.current?view=net-7.0)
+            //                 // so we should be able to just return value here, which would be faster
+            //                 let derefValue = value
+            //                 if derefValue < n then
+            //                     notStarted ()
+            //                 elif derefValue > m then
+            //                     alreadyFinished ()
+            //                 else
+            //                     derefValue
+            //
+            //             { new IEnumerator<'T> with
+            //                 member _.Current = current ()
+            //
+            //               interface IDisposable with
+            //                 member _.Dispose () = ()
+            //
+            //               interface IEnumerator with
+            //                 member _.Current = box (current ())
+            //                 member _.Reset () = value <- n - LanguagePrimitives.GenericOne
+            //                 member _.MoveNext () =
+            //                     let derefValue = value
+            //                     if derefValue < m then
+            //                         value <- derefValue + LanguagePrimitives.GenericOne
+            //                         true
+            //                     elif derefValue = m then
+            //                         value <- derefValue + LanguagePrimitives.GenericOne
+            //                         false
+            //                     else false }
+            //
+            //         { new IEnumerable<'T> with
+            //             member _.GetEnumerator () = singleStepRangeEnumerator ()
+            //
+            //           interface IEnumerable with
+            //             member _.GetEnumerator () = (singleStepRangeEnumerator ()) :> IEnumerator }

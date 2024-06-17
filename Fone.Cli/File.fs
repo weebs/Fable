@@ -156,7 +156,7 @@ let writeFile (sourceFilePath: string) (includes: string list) (compiledModule: 
 //         member this.db = Unchecked.defaultof<_>
 //         member this.transformType generics t = transformType this generics t
 
-let transformFile (database: AST.Type.ICompiler) (_com: Fable.Compiler) (file: File) =
+let transformFile useSourceMap (database: AST.Type.ICompiler) (_com: Fable.Compiler) (file: File) =
     // database.contents <- _com
     compiler.UpdateFile(_com.CurrentFile, FileCompilationResults.Empty, ())
     let context = {
@@ -167,6 +167,7 @@ let transformFile (database: AST.Type.ICompiler) (_com: Fable.Compiler) (file: F
         db = database
         // todo : module
         m = Operators.Unchecked.defaultof<_>
+        useSourceMap = useSourceMap
     }
     do
         let dir = IO.Path.GetDirectoryName(_com.CurrentFile)

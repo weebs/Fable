@@ -16,6 +16,7 @@ type Context = {
     currentFile: string
     idents: string list
     db: AST.Type.ICompiler
+    useSourceMap: bool
     m: Module
 }
 and Module =

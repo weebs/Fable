@@ -72,6 +72,10 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "clang-ast-parser", "clang-a
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fone.Web", "Fone.Web\Fone.Web.fsproj", "{20DDBCDF-2AA7-49BA-8F5F-8D8C295373B9}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Fone.Tests", "Fone.Tests\Fone.Tests.fsproj", "{D5C60554-57AD-4A84-BFBE-4DC5DE52809A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ILTEst", "ILTEst\ILTEst.csproj", "{1E8BAC24-422D-4FD7-AA65-1D6C518F34EE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -190,6 +194,14 @@ Global
 		{20DDBCDF-2AA7-49BA-8F5F-8D8C295373B9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{20DDBCDF-2AA7-49BA-8F5F-8D8C295373B9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{20DDBCDF-2AA7-49BA-8F5F-8D8C295373B9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D5C60554-57AD-4A84-BFBE-4DC5DE52809A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D5C60554-57AD-4A84-BFBE-4DC5DE52809A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D5C60554-57AD-4A84-BFBE-4DC5DE52809A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D5C60554-57AD-4A84-BFBE-4DC5DE52809A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1E8BAC24-422D-4FD7-AA65-1D6C518F34EE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1E8BAC24-422D-4FD7-AA65-1D6C518F34EE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1E8BAC24-422D-4FD7-AA65-1D6C518F34EE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1E8BAC24-422D-4FD7-AA65-1D6C518F34EE}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

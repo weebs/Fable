@@ -22,8 +22,17 @@
 - [x] Mutable List
 - [x] Byref
 
+### Documentation
+- TODO Compilation model
+  - What files are produced
+  - How to include headers / other sources
+- Emit
+- DllImport ?
+
 ### Todo
 
+- [ ] Interfaces
+- [ ] Structs with reference fields
 - [ ] Threads
     - Make __refcount an atomic type
 - [ ] byref / inref / outref
@@ -33,13 +42,14 @@
 - [ ] Enums
 - [ ] Interpolated Strings
 - [ ] Result
+- [ ] Generic interfaces
 - [ ] Computation expressions
 - [ ] Immutable Array
 - [ ] Structs with reference type fields
-- [ ] Interfaces
 - [ ] Boxed types
 - [ ] Inheritance
 - [ ] Object.GetHashCode
+- [ ] IDisposable
 - [ ] Equality / Comparison / Hash Code
     - [ ] Structs
     - [ ] Records
@@ -61,7 +71,7 @@
 - [ ] Complex let bindings
 - [ ] Complex expressions as call args
 - [ ] Complex expressions in general
-- [ ]
+- [ ] Generic interface members
 
 ### Future
 
